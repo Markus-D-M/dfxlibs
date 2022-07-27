@@ -1,0 +1,8 @@
+.DS_Store
+.history
+.vscode
+.idea
+tests
+dist
+doc
+__pycache__

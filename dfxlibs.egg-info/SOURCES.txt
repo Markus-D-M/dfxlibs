@@ -1,0 +1,10 @@
+LICENSE.txt
+README.rst
+setup.py
+dfxlibs/__init__.py
+dfxlibs.egg-info/PKG-INFO
+dfxlibs.egg-info/SOURCES.txt
+dfxlibs.egg-info/dependency_links.txt
+dfxlibs.egg-info/entry_points.txt
+dfxlibs.egg-info/requires.txt
+dfxlibs.egg-info/top_level.txt

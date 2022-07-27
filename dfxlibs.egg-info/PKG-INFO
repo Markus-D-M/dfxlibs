@@ -1,0 +1,11 @@
+Metadata-Version: 1.2
+Name: dfxlibs
+Version: 0.0.1
+Summary: DFIR libs
+Home-page: https://github.com
+Author: Markus D
+Author-email: mar.d@gmx.net
+License: Apache 2.0
+Description: UNKNOWN
+Platform: UNKNOWN
+Requires-Python: >=3.8
