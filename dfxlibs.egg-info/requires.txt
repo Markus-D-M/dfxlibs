@@ -1,3 +1,5 @@
 libewf-python
 pytsk3
 python-registry
+python-evtx
+lxml

@@ -19,5 +19,7 @@
 
 from dfxlibs.windows import helpers
 from .events import evtxfile
+from .events import evtxcarver
+from .registry import registryentry
 
-__all__ = ['helpers', 'evtxfile']
+__all__ = ['helpers', 'evtxfile', 'evtxcarver', 'registryentry']

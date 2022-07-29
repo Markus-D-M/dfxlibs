@@ -132,7 +132,14 @@ def parse_arguments():
                                                                               'Image and stores them in a sqlite '
                                                                               'database in the meta_folder.'
                                                                               ' You can specify a partition with '
-                                                                              '--part.')
+                                                                              '--part. Can be combined with --carve, '
+                                                                              'for carving evtx entries')
+    parser.add_argument('-creg', '--convert_reg', action='store_true', help='read the windows registry and stores '
+                                                                            'them in a sqlite database in the '
+                                                                            'meta_folder.'
+                                                                            ' You can specify a partition with '
+                                                                            '--part.')
+    parser.add_argument('--carve', action='store_true', help='switch on carving')
     parser.add_argument('--part', help='Specify partition for actions like --scan_files. It must be named as '
                                        'given in the --list_partitions output.')
     return parser.parse_args()
@@ -178,7 +185,20 @@ def main():
         except (AttributeError, IOError) as e:
             print(e)
             sys.exit(2)
-
+        if env['args'].carve:
+            try:
+                dfxlibs.cli.actions.events.carve_evtx(env['image'], meta_folder=env['meta_folder'],
+                                                      part=env['args'].part)
+            except (AttributeError, IOError) as e:
+                print(e)
+                sys.exit(2)
+    if env['args'].convert_reg:
+        try:
+            dfxlibs.cli.actions.registry.convert_registry(env['image'], meta_folder=env['meta_folder'],
+                                                          part=env['args'].part)
+        except (AttributeError, IOError) as e:
+            print(e)
+            sys.exit(2)
 
 
 if __name__ == '__main__':

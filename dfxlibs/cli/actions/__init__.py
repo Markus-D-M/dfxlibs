@@ -18,5 +18,6 @@
 from . import partitions
 from . import files
 from . import events
+from . import registry
 
-__all__ = ['partitions', 'files', 'events']
+__all__ = ['partitions', 'files', 'events', 'registry']

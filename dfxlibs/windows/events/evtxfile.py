@@ -18,7 +18,7 @@
 import logging
 from struct import unpack
 from typing import Iterator
-from Evtx.Evtx import ChunkHeader, Record
+from Evtx.Evtx import ChunkHeader
 import dfxlibs
 from lxml import etree
 from Evtx.BinaryParser import OverrunBufferException

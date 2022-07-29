@@ -92,5 +92,50 @@ def convert_evtx(image: dfxlibs.general.image.Image, meta_folder: str, part: str
                      f'partition {partition.table_num}_{partition.slot_num}')
 
 
+def carve_evtx(image: dfxlibs.general.image.Image, meta_folder: str, part: str = None) -> None:
+    """
+    carve all windows evtx logs in a given Image and stores them in a sqlite database in the meta_folder.
+    If partition is specified then only the data of this partition is scanned
+
+    :param image: image file
+    :type image: dfxlibs.general.image.Image
+    :param meta_folder: name of the meta information folder to store/read file database
+    :type meta_folder: str
+    :param part: partition name in the format "X_Y"
+    :type part: str
+    :return: None
+    :raise AttributeError: if image is None
+    """
+    if image is None:
+        raise AttributeError('ERROR: No image file specified (--image)')
+
+    partitions = image.partitions
+    for partition in partitions:
+        if part is not None and f'{partition.table_num}_{partition.slot_num}' != part:
+            continue
+
+        sqlite_events_con = sqlite3.connect(
+            os.path.join(meta_folder, f'events_{partition.table_num}_{partition.slot_num}.db'))
+        sqlite_events_con.row_factory = dfxlibs.windows.events.event.Event.db_factory
+        sqlite_events_cur = sqlite_events_con.cursor()
+        first_event = True
+        record_count = 0
+        carver = dfxlibs.windows.evtxcarver.EvtxCarver(partition)
+        for event in carver.records:
+            if first_event:
+                for create_command in event.db_create_table():
+                    sqlite_events_cur.execute(create_command)
+                first_event = False
+                _logger.info("storing carved event records in " +
+                             os.path.join(meta_folder, f'events_{partition.table_num}_{partition.slot_num}.db'))
+            try:
+                sqlite_events_cur.execute(*event.db_create_insert())
+                record_count += 1
+            except sqlite3.IntegrityError:
+                pass
+        sqlite_events_con.commit()
+        _logger.info(f'{record_count} event records carved for '
+                     f'partition {partition.table_num}_{partition.slot_num}')
+
 
 

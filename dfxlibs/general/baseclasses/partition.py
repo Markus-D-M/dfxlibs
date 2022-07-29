@@ -202,6 +202,16 @@ class Partition:
         else:
             raise AttributeError('Partition not allocated or filesystem unknown')
 
+    def read_buffer(self, size: int, partition_byte_offset: int) -> bytes:
+        # checking partition boundaries
+        last_byte = (self.sector_offset + self.sector_count) * self._source.sector_size
+        offset = min(self.sector_offset * self._source.sector_size + partition_byte_offset, last_byte)
+        size = min(size, last_byte - offset)
+
+        if size == 0:
+            return b''
+        return self._source.handle.read(offset, size)
+
     def get_file(self, path: str) -> File:
         if self.filesystem is None:
             raise IOError('unknown filesystem')
