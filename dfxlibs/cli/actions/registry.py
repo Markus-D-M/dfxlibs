@@ -38,7 +38,7 @@ def value_to_json(value) -> str:
 
 
 def recursive_registry(key, db_cur: sqlite3.Cursor = None, mount_point: str = None):
-    # key info:
+    # replace root with mountpoint
     path = mount_point + key.path()[4:]
     try:
         value = key.value('(default)')
@@ -128,14 +128,25 @@ def convert_registry(image: dfxlibs.general.image.Image, meta_folder: str, part:
         sqlite_files_con.row_factory = dfxlibs.general.baseclasses.file.File.db_factory
         sqlite_files_cur = sqlite_files_con.cursor()
 
-        # start with system hive
-        sqlite_files_cur.execute(r'SELECT * FROM File WHERE name=? and parent_folder=? and allocated=?',
-                                 ('SYSTEM', r'/Windows/System32/config', 1))
-        system_hive_file = sqlite_files_cur.fetchone()
-        if not system_hive_file:
-            # no windows partition
-            continue
-        system_hive_file.open(partition)
-        system_hive = Registry.Registry(system_hive_file)
-        recursive_registry(system_hive.root(), sqlite_registry_cur, 'HKLM\\SYSTEM')
-        sqlite_registry_con.commit()
+        # System hives
+        hives = [{'filename': 'SYSTEM', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SYSTEM'},
+                 {'filename': 'SOFTWARE', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SOFTWARE'},
+                 {'filename': 'SAM', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SAM'},
+                 {'filename': 'SECURITY', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SECURITY'},
+                 {'filename': 'DEFAULT', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKU\\.DEFAULT'},
+                 {'filename': 'NTUSER.DAT', 'filepath': r'/Windows/ServiceProfiles/LocalService',
+                  'mountpoint': 'HKU\\S-1-5-19'},
+                 {'filename': 'NTUSER.DAT', 'filepath': r'/Windows/ServiceProfiles/NetworkService',
+                  'mountpoint': 'HKU\\S-1-5-20'}
+                 ]
+        for hive in hives:
+            sqlite_files_cur.execute(r'SELECT * FROM File WHERE name=? and parent_folder=? and allocated=?',
+                                     (hive['filename'], hive['filepath'], 1))
+            hive_file = sqlite_files_cur.fetchone()
+            if not hive_file:
+                # hive not found (perhaps no windows system partition)
+                continue
+            hive_file.open(partition)
+            hive_reg = Registry.Registry(hive_file)
+            recursive_registry(hive_reg.root(), sqlite_registry_cur, hive['mountpoint'])
+            sqlite_registry_con.commit()
