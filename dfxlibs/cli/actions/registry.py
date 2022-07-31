@@ -138,4 +138,4 @@ def convert_registry(image: dfxlibs.general.image.Image, meta_folder: str, part:
         system_hive_file.open(partition)
         system_hive = Registry.Registry(system_hive_file)
         recursive_registry(system_hive.root(), sqlite_registry_cur, 'HKLM\\SYSTEM')
-        sqlite_files_con.commit()
+        sqlite_registry_con.commit()
