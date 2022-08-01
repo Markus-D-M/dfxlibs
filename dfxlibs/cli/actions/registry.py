@@ -29,16 +29,8 @@ import dfxlibs
 _logger = logging.getLogger(__name__)
 
 
-def value_to_json(value) -> str:
-    if type(value) is bytes:
-        value = value.hex()
-    elif type(value) is datetime:
-        value = value.timestamp()
-    return dumps(value)
-
-
 def recursive_registry(key, db_cur: sqlite3.Cursor = None, mount_point: str = None):
-    # replace root with mountpoint
+    # replace 'ROOT' with mountpoint
     path = mount_point + key.path()[4:]
     try:
         value = key.value('(default)')
@@ -55,7 +47,7 @@ def recursive_registry(key, db_cur: sqlite3.Cursor = None, mount_point: str = No
         value_content = '(value not set)'
         value_timestamp = key.timestamp().replace(tzinfo=timezone.utc)
     regentry = dfxlibs.windows.registryentry.RegistryEntry(value_timestamp, path , value_name,
-                                                           value_type, value_to_json(value_content))
+                                                           value_type, value_content)
     try:
         db_cur.execute(*regentry.db_create_insert())
     except sqlite3.IntegrityError:
@@ -82,7 +74,7 @@ def recursive_registry(key, db_cur: sqlite3.Cursor = None, mount_point: str = No
         elif type(value_content) is datetime:
             value_content = value_content.timestamp()
         regentry = dfxlibs.windows.registryentry.RegistryEntry(value_timestamp, path, value_name,
-                                                               value_type, value_to_json(value_content))
+                                                               value_type, value_content)
         try:
             db_cur.execute(*regentry.db_create_insert())
         except sqlite3.IntegrityError:
@@ -119,7 +111,7 @@ def convert_registry(image: dfxlibs.general.image.Image, meta_folder: str, part:
 
         sqlite_registry_con = sqlite3.connect(
             os.path.join(meta_folder, f'registry_{partition.table_num}_{partition.slot_num}.db'))
-        sqlite_registry_con.row_factory = dfxlibs.windows.events.event.Event.db_factory
+        sqlite_registry_con.row_factory = dfxlibs.windows.registryentry.RegistryEntry.db_factory
         sqlite_registry_cur = sqlite_registry_con.cursor()
         _logger.info("storing registry in " +
                      os.path.join(meta_folder, f'registry_{partition.table_num}_{partition.slot_num}.db'))
@@ -133,6 +125,7 @@ def convert_registry(image: dfxlibs.general.image.Image, meta_folder: str, part:
                  {'filename': 'SOFTWARE', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SOFTWARE'},
                  {'filename': 'SAM', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SAM'},
                  {'filename': 'SECURITY', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SECURITY'},
+                 {'filename': 'DRIVERS', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\DRIVERS'},
                  {'filename': 'DEFAULT', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKU\\.DEFAULT'},
                  {'filename': 'NTUSER.DAT', 'filepath': r'/Windows/ServiceProfiles/LocalService',
                   'mountpoint': 'HKU\\S-1-5-19'},
@@ -150,3 +143,35 @@ def convert_registry(image: dfxlibs.general.image.Image, meta_folder: str, part:
             hive_reg = Registry.Registry(hive_file)
             recursive_registry(hive_reg.root(), sqlite_registry_cur, hive['mountpoint'])
             sqlite_registry_con.commit()
+
+        # User hives
+        try:
+            sqlite_registry_cur.execute(r'SELECT * FROM RegistryEntry WHERE '
+                                        r'key like '
+                                        r'"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\S-1-5-21%" '
+                                        r'and value_name = "ProfileImagePath"')
+            user_profiles = sqlite_registry_cur.fetchall()
+        except sqlite3.OperationalError:
+            # no hives in this partition
+            user_profiles = []
+
+        for user_profile in user_profiles:
+            _, sid = user_profile.key.rsplit('\\', 1)
+            profile_folder = user_profile.get_real_value()[2:].replace('\\', '/')
+            hives = [
+                {'filename': 'NTUSER.DAT', 'filepath': profile_folder,
+                 'mountpoint': f'HKU\\{sid}'},
+                {'filename': 'UsrClass.dat', 'filepath': f'{profile_folder}/AppData/Local/Microsoft/Windows',
+                 'mountpoint': f'HKU\\S-1-'}] # Classes hive does not start with 'ROOT'
+            for hive in hives:
+                sqlite_files_cur.execute(r'SELECT * FROM File WHERE name=? and parent_folder=? and allocated=?',
+                                         (hive['filename'], hive['filepath'], 1))
+                hive_file = sqlite_files_cur.fetchone()
+                if not hive_file:
+                    _logger.warning(f'profile hive in {profile_folder} not found')
+                    continue
+                hive_file.open(partition)
+                hive_reg = Registry.Registry(hive_file)
+                recursive_registry(hive_reg.root(), sqlite_registry_cur, hive['mountpoint'])
+                sqlite_registry_con.commit()
+

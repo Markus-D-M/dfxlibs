@@ -17,6 +17,7 @@ setup(
     },
     install_requires=[
         'libewf-python',
+        'libqcow-python',
         'pytsk3',
         'python-registry',
         'python-evtx',
