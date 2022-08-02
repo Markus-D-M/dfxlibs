@@ -17,11 +17,14 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 """
+import datetime
 
 import dfxlibs
 import sqlite3
 import os.path
 import logging
+
+from typing import List
 
 
 _logger = logging.getLogger(__name__)
@@ -40,6 +43,7 @@ def convert_evtx(image: dfxlibs.general.image.Image, meta_folder: str, part: str
     :type part: str
     :return: None
     :raise AttributeError: if image is None
+    :raise IOError: if image is not scanned for files
     """
     if image is None:
         raise AttributeError('ERROR: No image file specified (--image)')
@@ -138,4 +142,59 @@ def carve_evtx(image: dfxlibs.general.image.Image, meta_folder: str, part: str =
                      f'partition {partition.table_num}_{partition.slot_num}')
 
 
+def get_user_sessions(image: dfxlibs.general.image.Image, meta_folder: str, part: str = None) -> List:
+    """
+    analysing eventlogs for user sessions from channel
+    "Microsoft-Windows-TerminalServices-LocalSessionManager/Operational" using the event ids
+      * 21: Session logon succeeded
+      * 24: Session disconnect
+      * 25: Session reconnect
+    and event id 6005 (System) to retrieve system startups
 
+    :param image: image file
+    :type image: dfxlibs.general.image.Image
+    :param meta_folder: name of the meta information folder to store/read file database
+    :type meta_folder: str
+    :param part: partition name in the format "X_Y"
+    :type part: str
+    :return: List of session events ordered by timestamp [timestamp, reason, user, remote_ip, sessionid]
+    :rtype: List
+    :raise AttributeError: if image is None
+    :raise IOError: if events are not converted
+
+    """
+    if image is None:
+        raise AttributeError('ERROR: No image file specified (--image)')
+
+    partitions = image.partitions
+    result = []
+    for partition in partitions:
+        if part is not None and f'{partition.table_num}_{partition.slot_num}' != part:
+            continue
+        events_db = os.path.join(meta_folder, f'events_{partition.table_num}_{partition.slot_num}.db')
+        if not os.path.isfile(events_db):
+            raise IOError('ERROR: No events database. Use --convert_evtx first')
+        sqlite_events_con = sqlite3.connect(events_db)
+        sqlite_events_con.row_factory = dfxlibs.windows.events.event.Event.db_factory
+        sqlite_events_cur = sqlite_events_con.cursor()
+
+        sqlite_events_cur.execute('SELECT * FROM Event WHERE (event_id in (21, 24, 25) '
+                                  'AND channel="Microsoft-Windows-TerminalServices-LocalSessionManager/Operational")'
+                                  'OR (channel="System" and event_id = 6005)')
+        events = sqlite_events_cur.fetchall()
+        for event in events:
+            session_reasons = {21: 'Session logon',
+                             24: 'Session disconnect',
+                             25: 'Session reconnect'}
+            if event.event_id == 6005:
+                result.append([event.timestamp.isoformat(), 'SYSTEM RESTART', '-', '-', '-'])
+            else:
+                event_data = event.get_real_data()
+                result.append([event.timestamp.isoformat(),
+                               session_reasons[event.event_id],
+                               event_data['User'],
+                               event_data['Address'],
+                               event_data['SessionID']])
+    result.sort(key=lambda x: x[0])
+    result.insert(0, ['Timestamp', 'Event', 'User', 'Remote IP', 'Session ID'])
+    return result

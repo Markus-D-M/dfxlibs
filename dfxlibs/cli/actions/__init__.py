@@ -19,5 +19,6 @@ from . import partitions
 from . import files
 from . import events
 from . import registry
+from . import browser
 
-__all__ = ['partitions', 'files', 'events', 'registry']
+__all__ = ['partitions', 'files', 'events', 'registry', 'browser']

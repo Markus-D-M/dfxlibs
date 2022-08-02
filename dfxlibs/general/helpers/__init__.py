@@ -17,6 +17,10 @@
     limitations under the License.
 """
 
+from .excelwriter import ExcelWriter
+
+__all__ = ['ExcelWriter']
+
 
 def bytes_to_hr(b: int) -> str:
     """

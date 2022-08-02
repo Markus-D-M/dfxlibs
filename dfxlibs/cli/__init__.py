@@ -142,6 +142,9 @@ def parse_arguments():
     parser.add_argument('--carve', action='store_true', help='switch on carving')
     parser.add_argument('--part', help='Specify partition for actions like --scan_files. It must be named as '
                                        'given in the --list_partitions output.')
+    parser.add_argument('-a', '--analyze', nargs='+', help='Analyze prepared data. Possible values are: '
+                                                           '"sessions" list user sessions')
+
     return parser.parse_args()
 
 
@@ -199,7 +202,26 @@ def main():
         except (AttributeError, IOError) as e:
             print(e)
             sys.exit(2)
+    if env['args'].analyze:
+        results = {}
+        if 'sessions' in env['args'].analyze:
+            results['sessions'] = dfxlibs.cli.actions.events.get_user_sessions(
+                env['image'], meta_folder=env['meta_folder'], part=env['args'].part)
+        if 'browser_history' in env['args'].analyze:
+            results['browser_history'] = dfxlibs.cli.actions.browser.get_browser_history(
+                env['image'], meta_folder=env['meta_folder'], part=env['args'].part)
 
+        # output results:
+        fname_results = join(env['meta_folder'],
+                             datetime.datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S') + '_analyze.xlsx')
+        writer = dfxlibs.general.helpers.ExcelWriter(fname_results)
+        for sheet in results:
+            writer.write_cells([results[sheet][0]], sheet_name=sheet, offset_col=1, offset_row=1,
+                               default_format=['bg-darkblue-100', 'bold'])
+            writer.write_cells(results[sheet][1:], sheet_name=sheet, offset_col=1, offset_row=2)
+            writer.auto_filter(1, 1, writer.current_row,  len(results[sheet][0]), sheet_name=sheet)
+
+        writer.close()
 
 if __name__ == '__main__':
     main()

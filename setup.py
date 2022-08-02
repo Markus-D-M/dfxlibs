@@ -21,6 +21,7 @@ setup(
         'pytsk3',
         'python-registry',
         'python-evtx',
-        'lxml'
+        'lxml',
+        "XlsxWriter"
     ]
 )
