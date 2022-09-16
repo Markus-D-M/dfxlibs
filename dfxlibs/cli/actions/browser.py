@@ -48,7 +48,7 @@ def get_browser_history(image: dfxlibs.general.image.Image, meta_folder: str, pa
             continue
         file_db = os.path.join(meta_folder, f'files_{partition.table_num}_{partition.slot_num}.db')
         if not os.path.isfile(file_db):
-            raise IOError('ERROR: No file database. Use --scan_files first')
+            raise IOError('ERROR: No file database. Use --prepare_files first')
 
         # Chrome
         sqlite_files_con = sqlite3.connect(file_db)

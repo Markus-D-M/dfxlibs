@@ -1,6 +1,6 @@
 # coding: utf-8
 """
-    dfxlibs Windows registry functions
+    Environment class
 
     Copyright 2022 Markus D (mar.d@gmx.net)
 
@@ -16,3 +16,14 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 """
+
+import argparse
+from typing import TypedDict, Dict, Optional
+import dfxlibs
+
+
+class Environment(TypedDict):
+    args: argparse.Namespace
+    meta_folder: str
+    config: Dict
+    image: Optional[dfxlibs.general.image.Image]

@@ -20,5 +20,6 @@ from . import files
 from . import events
 from . import registry
 from . import browser
+from . import usnjournal
 
-__all__ = ['partitions', 'files', 'events', 'registry', 'browser']
+__all__ = ['partitions', 'files', 'events', 'registry', 'browser', 'usnjournal']

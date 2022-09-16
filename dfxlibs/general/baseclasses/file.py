@@ -72,7 +72,6 @@ class File(DatabaseObject):
         self.sha256 = ''
         self.ssdeep = ''
         self.tlsh = ''
-        self.first_bytes = b''
         self.file_type = ''
         self.source = ''
 
@@ -114,13 +113,20 @@ class File(DatabaseObject):
                                                           attr.info.size, attr.info.id))
 
             if self.is_dir and self.allocated:
-                self._as_directory = self._tsk3_file.as_directory()
+                try:
+                    self._as_directory = self._tsk3_file.as_directory()
+                except OSError:
+                    print(self.name)
+                    print(self)
+                    raise
 
     @property
     def entries(self) -> Iterator['File']:
         if not self.is_dir and self.allocated:
             return
         for entry in self._as_directory:
+            if entry.info.name.name.decode('utf8') in ['.', '..']:
+                continue
             yield File(entry, self._parent_partition)
 
     def open(self, partition: 'Partition'):
@@ -133,13 +139,27 @@ class File(DatabaseObject):
         :return:
         """
         self._parent_partition = partition
-        self._tsk3_file = partition.filesystem.open(self.parent_folder + self.name
-                                                    if self.parent_folder == '/'
-                                                    else self.parent_folder + '/' + self.name)
+        self._tsk3_file = partition.filesystem.open_meta(self.meta_addr)
         self._offset = 0
 
-    def seek(self, offset):
+    def seek(self, offset: int):
+        """
+        Sets the current position in the file.
+
+        :param offset: number of bytes from the beginning of the file
+        :type offset: int
+        :return:
+        """
         self._offset = offset
+
+    def tell(self) -> int:
+        """
+        Returns the current position in the file.
+
+        :return: current position in the file as number of bytes from the beginning
+        :rtype int:
+        """
+        return self._offset
 
     def read(self, size=-1) -> bytes:
         """
@@ -159,7 +179,17 @@ class File(DatabaseObject):
             to_read = self.size - self._offset
         if to_read == 0:
             return b''
-        data = self._tsk3_file.read_random(self._offset, to_read)
+        data = b''
+        if ':' in self.name:
+            # ntfs ads
+            name, ads = self.name.split(':', maxsplit=1)
+            for attr in self._tsk3_file:
+                if attr.info.type == pytsk3.TSK_FS_ATTR_TYPE_NTFS_DATA and attr.info.name and \
+                        attr.info.name.decode('utf8') == ads:
+                    data = self._tsk3_file.read_random(self._offset, to_read, attr.info.type, attr.info.id)
+                    break
+        else:
+            data = self._tsk3_file.read_random(self._offset, to_read)
         self._offset = self._offset + to_read
         return data
 

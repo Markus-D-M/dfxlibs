@@ -22,6 +22,9 @@ setup(
         'python-registry',
         'python-evtx',
         'lxml',
-        "XlsxWriter"
+        "XlsxWriter",
+        "py-tlsh",
+        "python-magic",
+        "python-magic-bin;platform_system=='Windows'"
     ]
 )

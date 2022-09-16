@@ -188,6 +188,10 @@ class Partition:
             self._filesystem = None
 
     @property
+    def part_name(self) -> str:
+        return f'{self.table_num}_{self.slot_num}'
+
+    @property
     def bytes_offset(self) -> int:
         return self.sector_offset * self._source.sector_size
 
