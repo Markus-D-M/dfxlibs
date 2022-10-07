@@ -21,6 +21,7 @@ from typing import List, Union
 from os.path import isfile
 import pytsk3
 from dfxlibs.general.imageformats.ewf import Ewf
+from dfxlibs.general.imageformats.qcow import QCow
 from dfxlibs.general.baseclasses.partition import Partition
 from dfxlibs.general.helpers import bytes_to_hr
 
@@ -54,6 +55,8 @@ class Image:
             first8bytes = fh.read(8)
         if first8bytes == Ewf.magic:
             self._img_info = Ewf(filenames)
+        elif first8bytes[:4] == QCow.magic:
+            self._img_info = QCow(filenames)
         else:
             self._img_info = pytsk3.Img_Info(filenames[0])
             # raise IOError('Unknown file format')
@@ -68,18 +71,21 @@ class Image:
         except OSError:
             self.vstype = 'single partition'
 
-    @property
-    def partitions(self, part_flag=pytsk3.TSK_VS_PART_FLAG_ALLOC) -> List[Partition]:
+    def partitions(self, part_flag=pytsk3.TSK_VS_PART_FLAG_ALLOC, part_name: str = None) -> List[Partition]:
         """
         shows partitions in an image
 
         :param part_flag: sleuthkit TSK_VS_PART_FLAG_ENUM, which partition types should be returned
         :type part_flag: int
+        :param part_name: only return the partition with given name
+        :type part_name: str
         :return: partitions in the loaded source
         :rtype: List[Partition]
         """
         if self._vol_info:
-            return [a for a in [Partition(self, p) for p in self._vol_info] if a.flags & part_flag]
+            return [a for a in [Partition(self, p) for p in self._vol_info]
+                    if a.flags & part_flag and
+                    (part_name is None or a.part_name == part_name)]
         else:
             return [Partition(self)]
 

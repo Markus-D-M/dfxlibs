@@ -18,8 +18,8 @@
 """
 
 import argparse
-from os.path import isdir, join, isfile
-from os import mkdir
+from os.path import isdir, join
+from os import makedirs, mkdir
 import glob
 import sys
 import logging
@@ -27,11 +27,12 @@ import datetime
 from typing import List, Dict
 from json import dumps, loads, JSONDecodeError
 
+
 import dfxlibs
 
-from dfxlibs.cli import actions
+from dfxlibs.cli import actions, environment
 
-__all__ = ['actions']
+__all__ = ['actions', 'environment']
 
 LOGGING_FORMAT = '%(asctime)s %(name)s [%(levelname)s] %(message)s'
 logging.basicConfig(format=LOGGING_FORMAT, datefmt="%Y-%m-%dT%H:%M:%S%z",
@@ -103,7 +104,7 @@ def meta_folder(env: Dict):
     folder = args.meta_folder
     if not isdir(folder):
         if args.meta_create:
-            mkdir(folder)
+            makedirs(folder, exist_ok=True)
         else:
             raise IOError(f'ERROR: Meta information folder {repr(folder)} does not exist. '
                           'Use --meta_create flag or create it manually')
@@ -120,35 +121,78 @@ def meta_folder(env: Dict):
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='dfxlibs: A python digital forensics toolkit')
-    parser.add_argument('-m', '--meta_folder', required=True, help='folder to store and load meta information')
-    parser.add_argument('--meta_create', action='store_true', help='create meta information folder if not exists')
-    parser.add_argument('-i', '--image', nargs='+', help='forensic image file')
-    parser.add_argument('-lp', '--list_partitions', action='store_true', help='print partition list')
-    parser.add_argument('-sf', '--scan_files', action='store_true', help='Scan files and directories of all partitions.'
-                                                                         ' You can specify a partition with '
-                                                                         '--part. The file entries will be stored '
-                                                                         'in the meta_folder in a sqlite database')
-    parser.add_argument('-cevtx', '--convert_evtx', action='store_true', help='read all windows evtx logs in a given '
-                                                                              'Image and stores them in a sqlite '
-                                                                              'database in the meta_folder.'
-                                                                              ' You can specify a partition with '
-                                                                              '--part. Can be combined with --carve, '
-                                                                              'for carving evtx entries')
-    parser.add_argument('-creg', '--convert_reg', action='store_true', help='read the windows registry and stores '
-                                                                            'them in a sqlite database in the '
-                                                                            'meta_folder.'
-                                                                            ' You can specify a partition with '
-                                                                            '--part.')
-    parser.add_argument('--carve', action='store_true', help='switch on carving')
-    parser.add_argument('--part', help='Specify partition for actions like --scan_files. It must be named as '
-                                       'given in the --list_partitions output.')
+    group_general = parser.add_argument_group('General Arguments', 'These parameters are used in all categories.')
+    group_general.add_argument('-m', '--meta_folder', required=True,
+                               help='folder to store and load meta information')
+    group_general.add_argument('--meta_create', action='store_true',
+                               help='create meta information folder if not exists')
+    group_general.add_argument('-i', '--image', nargs='+',
+                               help='forensic image file. This parameter is stored in the meta information folder, so '
+                                    'it is only needed for the first call on an image. If this parameter is given on '
+                                    'proceeding calls, it will overwrite the parameter in the meta information folder '
+                                    '(so be careful to not mix up different images in one meta information folder).')
+    group_general.add_argument('--part',
+                               help='Specify partition for actions like --scan_files. It must be named as given in the '
+                                    '--list_partitions output. Without --part all partitions in an image will be '
+                                    'included.')
+    group_preparation = parser.add_argument_group('Preparation', 'These arguments prepare the data from the image for '
+                                                                 'further analysis')
+    group_preparation.add_argument('-pf', '--prepare_files', action='store_true',
+                                   help='Scan files and directories of all partitions. You can specify a partition '
+                                        'with --part. The file entries will be stored in the meta_folder in a sqlite '
+                                        'database')
+    group_preparation.add_argument('-pvss', '--prepare_vss', action='store_true',
+                                   help='Scan for files and directories in volume shadow copies of all partitions. '
+                                        'You can specify a partition with --part. The file entries will be stored in '
+                                        'the meta_folder in a sqlite database')
+    group_preparation.add_argument('--hash', nargs='+',
+                                   help='Hash all files <256 MiB of all partitions. You can specify a partition '
+                                        'with --part. Possible algorithms are md5, sha1, sha256 and tlsh. A minimum '
+                                        'filesize of 50 bytes is required for tlsh. The result is stored in the file '
+                                        'database.')
+    group_preparation.add_argument('--filetypes', action='store_true',
+                                   help='turn on signature based detection of filetypes of all files in all '
+                                        'partitions. The result is stored in the file database.'
+                                        'You can specify a partition  with --part. ')
+    group_preparation.add_argument('-pevtx', '--prepare_evtx', action='store_true',
+                                   help='read all windows evtx logs in a given Image and stores them in a sqlite '
+                                        'database in the meta_folder.  You can specify a partition with --part. ')
+    group_preparation.add_argument('-preg', '--prepare_reg', action='store_true',
+                                   help='read the windows registry and stores them in a sqlite database in the '
+                                        'meta_folder. You can specify a partition with --part.')
+    group_preparation.add_argument('-pusn', '--prepare_usn', action='store_true',
+                                   help='reading ntfs usn journals ans stores the entries in a sqlite database in the '
+                                        'meta_folder. You can specify a partition with --part.')
+
+    group_carve = parser.add_argument_group('Carving', 'These arguments are for different carving options.')
+    group_carve.add_argument('-cevtx', '--carve_evtx', action='store_true', help='carve for windows evtx entries and '
+                                                                                 'stores them in the same database as '
+                                                                                 'for the --prepare_evtx argument')
+    group_carve.add_argument('-cusn', '--carve_usn', action='store_true', help='carve for ntfs usn journal entries and '
+                                                                               'stores them in the same database as '
+                                                                               'for the --prepare_usn argument')
+
+    group_actions = parser.add_argument_group('Special actions', 'These parameters contains short and simple actions.')
+    group_actions.add_argument('-lp', '--list_partitions', action='store_true',
+                               help='print partition list')
+    group_actions.add_argument('-e', '--extract', nargs='+',
+                               help='Extracts files from the image and stores them to the meta_folder. You have to '
+                                    'give the full path and filename (with leading slash - even slashes instead of '
+                                    'backslashes for windows images) or a meta address. As default source "filesystem" '
+                                    'for regular files in the image will be used. You can give another filesource '
+                                    '(e.g. "vss#0" for shadow copy store 0) by just adding it in front of your path '
+                                    'and separate it with a colon (e.g. "vss#0:/path/testfile.txt" for '
+                                    '/path/testfile.txt from vss#0). You can give multiple files at once')
+
+    parser.add_argument('-a', '--analyze', nargs='+', help='Analyze prepared data. Possible values are: '
+                                                           '"sessions" list user sessions'
+                                                           '"browser_history" scans chrome history')
+
     return parser.parse_args()
 
 
 def main():
-    env = dict()
-
-    env['args'] = parse_arguments()
+    env = environment.Environment(args=parse_arguments(), meta_folder='', config={}, image=None)
 
     try:
         meta_folder(env)
@@ -159,9 +203,9 @@ def main():
     _logger.info('Running ' + ' '.join(sys.argv))
     _logger.info(f'dfxlibs version: {dfxlibs.__version__}')
 
-    env['image'] = None
     if image_files := get_image_files(env):
         env['image'] = dfxlibs.general.image.Image(image_files)
+        _logger.info(f'using image: {image_files}')
 
     if env['args'].list_partitions:
         try:
@@ -170,35 +214,102 @@ def main():
             print(e)
             sys.exit(2)
 
-    if env['args'].scan_files:
+    if env['args'].extract:
         try:
-            dfxlibs.cli.actions.files.scan_files(env['image'], meta_folder=env['meta_folder'],
-                                                 part=env['args'].part)
+            dfxlibs.cli.actions.files.extract(env['image'], meta_folder=env['meta_folder'],
+                                              part=env['args'].part, files=env['args'].extract)
         except AttributeError as e:
             print(e)
             sys.exit(2)
 
-    if env['args'].convert_evtx:
+
+    if env['args'].prepare_files:
         try:
-            dfxlibs.cli.actions.events.convert_evtx(env['image'], meta_folder=env['meta_folder'],
+            dfxlibs.cli.actions.files.prepare_files(env['image'], meta_folder=env['meta_folder'],
+                                                    part=env['args'].part)
+        except AttributeError as e:
+            print(e)
+            sys.exit(2)
+
+    if env['args'].prepare_vss:
+        try:
+            dfxlibs.cli.actions.files.prepare_vss_files(env['image'], meta_folder=env['meta_folder'],
+                                                        part=env['args'].part)
+        except AttributeError as e:
+            print(e)
+            sys.exit(2)
+
+    if env['args'].hash:
+        try:
+            dfxlibs.cli.actions.files.hash_files(env['image'], meta_folder=env['meta_folder'],
+                                                 part=env['args'].part, hash_algorithms=env['args'].hash)
+        except AttributeError as e:
+            print(e)
+            sys.exit(2)
+
+    if env['args'].filetypes:
+        try:
+            dfxlibs.cli.actions.files.file_types(env['image'], meta_folder=env['meta_folder'],
+                                                 part=env['args'].part)
+        except AttributeError as e:
+            print(e)
+            sys.exit(2)
+    if env['args'].prepare_usn:
+        try:
+            dfxlibs.cli.actions.usnjournal.prepare_usnjournal(env['image'], meta_folder=env['meta_folder'],
+                                                              part=env['args'].part)
+        except (AttributeError, IOError, ValueError) as e:
+            print(e)
+            sys.exit(2)
+    if env['args'].carve_usn:
+        try:
+            dfxlibs.cli.actions.usnjournal.carve_usnjournal(env['image'], meta_folder=env['meta_folder'],
+                                                            part=env['args'].part)
+        except (AttributeError, IOError) as e:
+            print(e)
+            sys.exit(2)
+
+    if env['args'].prepare_evtx:
+        try:
+            dfxlibs.cli.actions.events.prepare_evtx(env['image'], meta_folder=env['meta_folder'],
                                                     part=env['args'].part)
         except (AttributeError, IOError) as e:
             print(e)
             sys.exit(2)
-        if env['args'].carve:
-            try:
-                dfxlibs.cli.actions.events.carve_evtx(env['image'], meta_folder=env['meta_folder'],
-                                                      part=env['args'].part)
-            except (AttributeError, IOError) as e:
-                print(e)
-                sys.exit(2)
-    if env['args'].convert_reg:
+    if env['args'].carve_evtx:
         try:
-            dfxlibs.cli.actions.registry.convert_registry(env['image'], meta_folder=env['meta_folder'],
+            dfxlibs.cli.actions.events.carve_evtx(env['image'], meta_folder=env['meta_folder'],
+                                                  part=env['args'].part)
+        except (AttributeError, IOError) as e:
+            print(e)
+            sys.exit(2)
+    if env['args'].prepare_reg:
+        try:
+            dfxlibs.cli.actions.registry.prepare_registry(env['image'], meta_folder=env['meta_folder'],
                                                           part=env['args'].part)
         except (AttributeError, IOError) as e:
             print(e)
             sys.exit(2)
+    if env['args'].analyze:
+        results = {}
+        if 'sessions' in env['args'].analyze:
+            results['sessions'] = dfxlibs.cli.actions.events.get_user_sessions(
+                env['image'], meta_folder=env['meta_folder'], part=env['args'].part)
+        if 'browser_history' in env['args'].analyze:
+            results['browser_history'] = dfxlibs.cli.actions.browser.get_browser_history(
+                env['image'], meta_folder=env['meta_folder'], part=env['args'].part)
+
+        # output results:
+        fname_results = join(env['meta_folder'],
+                             datetime.datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S') + '_analyze.xlsx')
+        writer = dfxlibs.general.helpers.ExcelWriter(fname_results)
+        for sheet in results:
+            writer.write_cells([results[sheet][0]], sheet_name=sheet, offset_col=1, offset_row=1,
+                               default_format=['bg-darkblue-100', 'bold'])
+            writer.write_cells(results[sheet][1:], sheet_name=sheet, offset_col=1, offset_row=2)
+            writer.auto_filter(1, 1, writer.current_row,  len(results[sheet][0]), sheet_name=sheet)
+
+        writer.close()
 
 
 if __name__ == '__main__':

@@ -19,11 +19,17 @@
 
 import pytsk3
 import re
-from typing import TYPE_CHECKING, Optional
+import os
+import pyvshadow
+from typing import TYPE_CHECKING, Optional, Iterator, Tuple, Dict, List
 from dfxlibs.general.baseclasses.file import File
+from dfxlibs.general.filesystems.ntfs import VSSStore
+import logging
 
 if TYPE_CHECKING:
     from dfxlibs.general.image import Image
+
+_logger = logging.getLogger(__name__)
 
 MBR_PARTITION_TYPES = {
     0x01: 'FAT12',
@@ -145,6 +151,8 @@ TSK_FS_TYPE = {
 class Partition:
     def __init__(self, source: 'Image', partition_info: pytsk3.TSK_VS_PART_INFO = None):
         self._source = source
+        self._vss_volume = None
+        self._vss_store_cache: Dict[int, Tuple[pyvshadow.store, pytsk3.FS_Info]] = {}
         self.sector_offset = 0
         self.sector_count = source.size // source.sector_size
         self.flags = pytsk3.TSK_VS_PART_FLAG_ALLOC
@@ -157,6 +165,7 @@ class Partition:
         self.table_num = 0
         self.last_inum = 0
         self.first_inum = 0
+        self._read_byte_offset = 0
 
         if partition_info is not None:
             self.sector_offset = partition_info.start
@@ -167,6 +176,7 @@ class Partition:
             self.tag = partition_info.tag
             self.table_num = partition_info.table_num
             self.descr = partition_info.desc.decode('utf8')
+            self._last_byte_offset = (self.sector_offset + self.sector_count) * self._source.sector_size
             if self.flags & pytsk3.TSK_VS_PART_FLAG_ALLOC:
                 try:
                     self.type_id = int(re.search(r'\(0x(.+)\)', self.descr).group(1), 16)
@@ -179,6 +189,7 @@ class Partition:
             self.last_inum = self._filesystem.info.last_inum
             self.first_inum = self._filesystem.info.first_inum
             source.sector_size = self._filesystem.info.dev_bsize
+            self._last_byte_offset = (self.sector_offset + self.sector_count) * self._source.sector_size
             self.type_id = self._filesystem.info.ftype
             try:
                 self.descr = TSK_FS_TYPE[self.type_id]
@@ -186,6 +197,10 @@ class Partition:
                 pass
         else:
             self._filesystem = None
+
+    @property
+    def part_name(self) -> str:
+        return f'{self.table_num}_{self.slot_num}'
 
     @property
     def bytes_offset(self) -> int:
@@ -202,6 +217,74 @@ class Partition:
         else:
             raise AttributeError('Partition not allocated or filesystem unknown')
 
+    def get_volume_shadow_copy_filesystems(self) -> Tuple[int, pyvshadow.store, Iterator[pytsk3.FS_Info]]:
+        if self.type_id != pytsk3.TSK_FS_TYPE_NTFS:
+            # NTFS only
+            return
+        if self._vss_volume is None:
+            self._vss_volume = pyvshadow.volume()
+            try:
+                self._vss_volume.open_file_object(self)
+            except IOError:
+                self._vss_volume = None
+                _logger.warning(f'Unable to parse volume shadow copies in partition {self.part_name}')
+                return
+        for i in range(self._vss_volume.number_of_stores):
+            if i in self._vss_store_cache:
+                return i, self._vss_store_cache[i][0], self._vss_store_cache[i][1]
+            store: pyvshadow.store = self._vss_volume.get_store(i)
+            filesystem = pytsk3.FS_Info(VSSStore(store))
+            self._vss_store_cache[i] = (store, filesystem)
+            yield i, store, filesystem
+
+    def get_volume_shadow_copy_filesystem(self, store_id: int) -> pytsk3.FS_Info:
+        if self.type_id != pytsk3.TSK_FS_TYPE_NTFS:
+            # NTFS only
+            raise TypeError('partition has no ntfs filesystem')
+        if self._vss_volume is None:
+            self._vss_volume = pyvshadow.volume()
+            try:
+                self._vss_volume.open_file_object(self)
+            except IOError:
+                self._vss_volume = None
+                raise ValueError('unable to parse volume shadow copy')
+        if store_id in self._vss_store_cache:
+            return self._vss_store_cache[store_id][1]
+
+        store: pyvshadow.store = self._vss_volume.get_store(store_id)
+        filesystem = pytsk3.FS_Info(VSSStore(store))
+        self._vss_store_cache[store_id] = (store, filesystem)
+        return filesystem
+
+    def read(self, size: int = None):
+        # checking partition boundaries
+        if size is None:
+            read_size = self.bytes_size - self._read_byte_offset
+        else:
+            read_size = min(size, self.bytes_size - self._read_byte_offset)
+
+        if read_size == 0:
+            return b''
+
+        offset = min(self.sector_offset * self._source.sector_size + self._read_byte_offset, self._last_byte_offset)
+        self._read_byte_offset += read_size
+        return self._source.handle.read(offset, read_size)
+
+    def seek(self, offset, whence=os.SEEK_SET):
+        if offset < 0 or offset > self.bytes_size:
+            raise IOError('offset out of bounds')
+        if whence == os.SEEK_SET:
+            self._read_byte_offset = min(offset, self.bytes_size)
+        elif whence == os.SEEK_CUR:
+            self._read_byte_offset = min(self._read_byte_offset + offset, self.bytes_size)
+        elif whence == os.SEEK_END:
+            self._read_byte_offset = max(0, self.bytes_size - offset)
+        else:
+            raise RuntimeError('unknown whence value %s' % whence)
+
+    def tell(self):
+        return self._read_byte_offset
+
     def read_buffer(self, size: int, partition_byte_offset: int) -> bytes:
         # checking partition boundaries
         last_byte = (self.sector_offset + self.sector_count) * self._source.sector_size
@@ -212,18 +295,26 @@ class Partition:
             return b''
         return self._source.handle.read(offset, size)
 
-    def get_file(self, path: str) -> File:
+    def get_file(self, path: str = None, meta_addr: int = None) -> File:
         if self.filesystem is None:
             raise IOError('unknown filesystem')
-        try:
-            return File(self._filesystem.open(path), self)
-        except OSError:
-            raise OSError('path not found')
+        if path is None and meta_addr is None:
+            raise AttributeError('neither path nor meta_addr given')
+        if path is not None:
+            try:
+                return File(self._filesystem.open(path), self)
+            except OSError:
+                raise OSError('path not found')
+        if meta_addr is not None:
+            try:
+                return File(self._filesystem.open_meta(meta_addr), self)
+            except OSError:
+                raise OSError('invalid meta addr')
 
     def __str__(self):
         return (
             f'Partition {self.addr}:\n'
-            f'  {self.descr.decode("utf8")}\n'
+            f'  {self.descr}\n'
         )
 
     def __repr__(self):

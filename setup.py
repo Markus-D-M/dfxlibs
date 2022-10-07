@@ -17,9 +17,15 @@ setup(
     },
     install_requires=[
         'libewf-python',
+        'libqcow-python',
         'pytsk3',
         'python-registry',
         'python-evtx',
-        'lxml'
+        'lxml',
+        "XlsxWriter",
+        "py-tlsh",
+        "python-magic",
+        "python-magic-bin;platform_system=='Windows'",
+        "libvshadow-python"
     ]
 )

@@ -16,28 +16,47 @@
 """
 
 from typing import List, Any
-from datetime import datetime
-from json import loads
+from datetime import datetime, timezone
+from json import loads, dumps
 
 
 from dfxlibs.general.baseclasses.databaseobject import DatabaseObject
 
 
 class RegistryEntry(DatabaseObject):
-    def __init__(self, timestamp: datetime, key: str, value_name: str,
-                 value_type: str, value_content: str):
+    @staticmethod
+    def _value_to_json(value) -> str:
+        if type(value) is bytes:
+            value = value.hex()
+        elif type(value) is datetime:
+            value = value.timestamp()
+        return dumps(value)
+
+    @staticmethod
+    def _json_to_value(value, value_type) -> any:
+        value = loads(value)
+        if value_type == 'RegBin':
+            value = bytes.fromhex(value)
+        elif value_type == 'RegFileTime':
+            value = datetime.fromtimestamp(value, tz=timezone.utc)
+        return value
+
+    def __init__(self, timestamp: datetime = datetime.fromtimestamp(0, tz=timezone.utc),
+                 parent_key: str = '', name: str = '',
+                 rtype: str = '', content: any = '', is_key: bool = False):
         self.timestamp = timestamp
-        self.key = key
-        self.value_name = value_name
-        self.value_type = value_type
-        self.value_content = value_content
+        self.parent_key = parent_key
+        self.is_key = is_key
+        self.name = name
+        self.rtype = rtype
+        self.content = self._value_to_json(content)
 
     def get_real_value(self):
-        return loads(self.value_content)
+        return self._json_to_value(self.content, self.rtype)
 
     @staticmethod
     def db_primary_key() -> List[str]:
-        return ['key', 'value_name']
+        return ['parent_key', 'name']
 
     def __repr__(self):
         return (f'<{self.__class__.__name__} ' +

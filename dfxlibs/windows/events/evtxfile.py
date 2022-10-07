@@ -60,7 +60,7 @@ class EvtxFile:
             for record in chunk.records():
                 try:
                     evt_tree: etree = record.lxml()
-                except (OverrunBufferException, XMLSyntaxError, KeyError):
+                except (OverrunBufferException, XMLSyntaxError, KeyError, UnicodeDecodeError):
                     _logger.warning(f'{self._file.name}: error while processing events')
                     continue
                 try:

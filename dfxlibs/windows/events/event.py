@@ -16,17 +16,18 @@
 """
 
 from typing import List
-from datetime import datetime
-from json import dumps
+from datetime import datetime, timezone
+from json import dumps, loads
 
 
 from dfxlibs.general.baseclasses.databaseobject import DatabaseObject
 
 
 class Event(DatabaseObject):
-    def __init__(self, timestamp: datetime, event_id: int, channel: str,
-                 event_record_id: int, opcode: int, level: int, computer: str, user_id: str,
-                 provider: str, data: dict, carved: bool = False):
+    def __init__(self, timestamp: datetime = datetime.fromtimestamp(0, tz=timezone.utc),
+                 event_id: int = -1, channel: str = '',
+                 event_record_id: int = -1, opcode: int = -1, level: int = -1, computer: str = '',
+                 user_id: str = -1, provider: str = '', data: dict = {}, carved: bool = False):
         self.timestamp = timestamp
         self.event_id = event_id
         self.channel = channel
@@ -38,6 +39,9 @@ class Event(DatabaseObject):
         self.provider = provider
         self.data = dumps(data)
         self.carved = carved
+
+    def get_real_data(self):
+        return loads(self.data)
 
     @staticmethod
     def db_index():

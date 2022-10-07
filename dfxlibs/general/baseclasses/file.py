@@ -19,21 +19,17 @@ import pytsk3
 from typing import TYPE_CHECKING, Optional, Iterator, List
 from datetime import datetime, timezone
 import struct
-
+import logging
 
 from .databaseobject import DatabaseObject
-from dfxlibs.windows.helpers import filetime_to_dt
+
+from dfxlibs.general.filesystems.ntfs import NtfsAds, NTFSAttrFileName
+
 
 if TYPE_CHECKING:
     from dfxlibs.general.baseclasses.partition import Partition
 
-
-class NtfsAds:
-    def __init__(self, file: 'File', name: str, size: int, attr_id: int):
-        self.file = file
-        self.name = name
-        self.size = size
-        self.attr_id = attr_id
+_logger = logging.getLogger(__name__)
 
 
 class File(DatabaseObject):
@@ -53,6 +49,7 @@ class File(DatabaseObject):
         self.par_addr = -1
         self.par_seq = -1
         self.is_dir = False
+        self.is_link = False
         self.allocated = False
         self.size = -1
         self.name = ''
@@ -70,9 +67,7 @@ class File(DatabaseObject):
         self.md5 = ''
         self.sha1 = ''
         self.sha256 = ''
-        self.ssdeep = ''
         self.tlsh = ''
-        self.first_bytes = b''
         self.file_type = ''
         self.source = ''
 
@@ -85,6 +80,7 @@ class File(DatabaseObject):
                 self.par_seq = tsk3_file.info.name.par_seq
                 self.name = self._tsk3_file.info.name.name.decode('utf8')
                 self.is_dir = tsk3_file.info.name.type == pytsk3.TSK_FS_NAME_TYPE_ENUM.TSK_FS_NAME_TYPE_DIR
+                self.is_link = tsk3_file.info.name.type == pytsk3.TSK_FS_NAME_TYPE_ENUM.TSK_FS_NAME_TYPE_LNK
                 self.allocated = tsk3_file.info.name.flags == pytsk3.TSK_FS_NAME_FLAG_ENUM.TSK_FS_NAME_FLAG_ALLOC
 
             if tsk3_file.info.meta is not None:
@@ -101,27 +97,44 @@ class File(DatabaseObject):
                 self.mtime = datetime.fromtimestamp(tsk3_file.info.meta.mtime + tsk3_file.info.meta.mtime_nano / 1e9,
                                                     tz=timezone.utc)
                 if self._parent_partition.type_id == pytsk3.TSK_FS_TYPE_NTFS:
-                    # If NTFS -> get FNAME timestamps
+                    # If NTFS -> get FNAME timestamps and ads
                     for attr in tsk3_file:
                         if attr.info.type == pytsk3.TSK_FS_ATTR_TYPE_NTFS_FNAME:
-                            time2 = struct.unpack('4Q', tsk3_file.read_random(8, 32, attr.info.type, attr.info.id))
-                            self.fn_crtime = filetime_to_dt(time2[0])
-                            self.fn_mtime = filetime_to_dt(time2[1])
-                            self.fn_ctime = filetime_to_dt(time2[2])
-                            self.fn_atime = filetime_to_dt(time2[3])
+                            try:
+                                attr_fname = NTFSAttrFileName(tsk3_file.read_random(0, attr.info.size,
+                                                                                    attr.info.type, attr.info.id))
+                            except (struct.error, UnicodeDecodeError):
+                                continue
+                            self.fn_crtime = attr_fname.crtime
+                            self.fn_mtime = attr_fname.mtime
+                            self.fn_ctime = attr_fname.ctime
+                            self.fn_atime = attr_fname.atime
                         if attr.info.type == pytsk3.TSK_FS_ATTR_TYPE_NTFS_DATA and attr.info.name:
                             self._ntfs_ads.append(NtfsAds(self, attr.info.name.decode('utf8'),
                                                           attr.info.size, attr.info.id))
 
-            if self.is_dir and self.allocated:
-                self._as_directory = self._tsk3_file.as_directory()
-
     @property
     def entries(self) -> Iterator['File']:
-        if not self.is_dir and self.allocated:
+        """
+        Retrieve the child entries for a directory
+
+        :return: Iterator over File objects
+        :rtype Iterator['File']:
+        :raise IOError: if file object is not connected to an image
+        """
+        if self._parent_partition is None:
+            raise IOError('File object not connected to image. Call open() first.')
+        if not self.is_dir or not self.allocated:
             return
+
+        if self._as_directory is None:
+            self._as_directory = self._tsk3_file.as_directory()
         for entry in self._as_directory:
-            yield File(entry, self._parent_partition)
+            #if entry.info.name.name.decode('utf8') in ['.', '..']:
+            #    continue
+            file = File(entry, self._parent_partition)
+            file.source = self.source
+            yield file
 
     def open(self, partition: 'Partition'):
         """
@@ -133,13 +146,32 @@ class File(DatabaseObject):
         :return:
         """
         self._parent_partition = partition
-        self._tsk3_file = partition.filesystem.open(self.parent_folder + self.name
-                                                    if self.parent_folder == '/'
-                                                    else self.parent_folder + '/' + self.name)
+        if self.source == 'filesystem':
+            self._tsk3_file = partition.filesystem.open_meta(self.meta_addr)
+        elif self.source.startswith('vss#'):
+            _, store_id = self.source.split('#', 1)
+            store_id = int(store_id)
+            self._tsk3_file = partition.get_volume_shadow_copy_filesystem(store_id).open_meta(self.meta_addr)
         self._offset = 0
 
-    def seek(self, offset):
+    def seek(self, offset: int):
+        """
+        Sets the current position in the file.
+
+        :param offset: number of bytes from the beginning of the file
+        :type offset: int
+        :return:
+        """
         self._offset = offset
+
+    def tell(self) -> int:
+        """
+        Returns the current position in the file.
+
+        :return: current position in the file as number of bytes from the beginning
+        :rtype int:
+        """
+        return self._offset
 
     def read(self, size=-1) -> bytes:
         """
@@ -159,9 +191,46 @@ class File(DatabaseObject):
             to_read = self.size - self._offset
         if to_read == 0:
             return b''
-        data = self._tsk3_file.read_random(self._offset, to_read)
+
+        attr_type = pytsk3.TSK_FS_ATTR_TYPE_DEFAULT
+        attr_id = -1
+        if ':' in self.name:
+            # reading NTFS ADS
+            name, ads = self.name.split(':', maxsplit=1)
+            for attr in self._tsk3_file:
+                if attr.info.type == pytsk3.TSK_FS_ATTR_TYPE_NTFS_DATA and attr.info.name and \
+                        attr.info.name.decode('utf8') == ads:
+                    attr_type = attr.info.type
+                    attr_id = attr.info.id
+                    break
+
+        try:
+            data = self._tsk3_file.read_random(self._offset, to_read, attr_type, attr_id)
+        except OSError as e:
+            # unable to extract data from image
+            # reading sector by sector as far as it works
+            data = b''
+            read = 0
+            while read < to_read:
+                read_now = min(512, to_read - read)
+                try:
+                    data += self._tsk3_file.read_random(self._offset+read, read_now, attr_type, attr_id)
+                except OSError:
+                    _logger.warning(f'Error while reading {self.full_name}: '
+                                    f'Can only extract {read} of {to_read} bytes')
+                    to_read = read
+                    break
+                read += read_now
+
         self._offset = self._offset + to_read
         return data
+
+    @property
+    def full_name(self):
+        if self.parent_folder == '/':
+            return f'/{self.name}'
+        else:
+            return f'{self.parent_folder}/{self.name}'
 
     def __repr__(self):
         return (f'<{self.__class__.__name__} ' +
@@ -174,7 +243,8 @@ class File(DatabaseObject):
     def ntfs_ads(self) -> Iterator['File']:
         for ads in self._ntfs_ads:
             new_attr = {attr: getattr(self, attr) for attr in ['parent_folder', 'meta_addr', 'meta_seq', 'source',
-                                                               'par_addr', 'par_seq', 'allocated', 'ctime']}
+                                                               'par_addr', 'par_seq', 'allocated',
+                                                               '_tsk3_file', '_parent_partition']}
             new_attr['size'] = ads.size
             new_attr['name'] = f'{self.name}:{ads.name}'
             file_ads = File.from_values(**new_attr)
@@ -190,8 +260,8 @@ class File(DatabaseObject):
     @staticmethod
     def db_index():
         return ['meta_addr', 'meta_seq', 'par_addr', 'par_seq', 'name', 'parent_folder', 'md5', 'sha1',
-                'sha256', 'ssdeep', 'tlsh', 'atime', 'ctime', 'crtime', 'mtime']
+                'sha256', 'tlsh', 'atime', 'ctime', 'crtime', 'mtime']
 
     @staticmethod
     def db_primary_key() -> List[str]:
-        return ['meta_addr', 'name', 'size', 'crtime', 'mtime', 'atime', 'ctime']
+        return ['meta_addr', 'name', 'parent_folder', 'size', 'crtime', 'mtime', 'atime', 'ctime']

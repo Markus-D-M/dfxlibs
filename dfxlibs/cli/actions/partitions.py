@@ -36,7 +36,6 @@ def list_partitions(image: dfxlibs.general.image.Image) -> None:
     """
     if image is None:
         raise AttributeError('ERROR: No image file specified (--image)')
-    partitions = image.partitions
     if len(image.filenames) > 1:
         print(f'Image files: {image.filenames[0]}, {image.filenames[1]}, ...')
     else:
@@ -46,7 +45,7 @@ def list_partitions(image: dfxlibs.general.image.Image) -> None:
     print(f'Partition table type: {image.vstype}')
     print('')
     print(f'{"Partition":10} {"Start":>10} {"End":>10} {"Sectors":>10} {"Size":>10}  {"Id":>4}  Description')
-    for partition in partitions:
+    for partition in image.partitions():
         print(f'{str(partition.table_num) + "_" + str(partition.slot_num):<10} {partition.sector_offset:10} '
               f'{partition.sector_offset+partition.sector_count:10} {partition.sector_count:10} '
               f'{bytes_to_hr(partition.bytes_size):>10}  0x{partition.type_id:02x}  {partition.descr}')
