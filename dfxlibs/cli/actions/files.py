@@ -32,6 +32,7 @@ from datetime import datetime
 from dfxlibs.general.helpers.db_filter import db_eq, db_lt, db_ge, db_and, db_gt
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.general.image import Image
+from dfxlibs.cli.arguments import register_argument
 
 
 _logger = logging.getLogger(__name__)
@@ -320,6 +321,15 @@ def file_types(image: Image, meta_folder: str, part: str = None) -> None:
     _logger.info('filetype detection finished')
 
 
+@register_argument('-e', '--extract', nargs='+', help='Extracts files from the image and stores them to the '
+                                                      'meta_folder. You have to give the full path and filename (with '
+                                                      'leading slash - even slashes instead of backslashes for windows '
+                                                      'images) or a meta address. As default source "filesystem" for '
+                                                      'regular files in the image will be used. You can give another '
+                                                      'file-source (e.g. "vss#0" for shadow copy store 0) by just '
+                                                      'adding it in front of your path and separate it with a colon '
+                                                      '(e.g. "vss#0:/path/testfile.txt" for /path/testfile.txt from '
+                                                      'vss#0). You can give multiple files at once', group_id='special')
 def extract(image: Image, meta_folder: str, part: str = None, files: List[str] = None) -> None:
     """
     Extracts files from the image and stores them to the meta_folder.
@@ -359,6 +369,10 @@ def extract(image: Image, meta_folder: str, part: str = None, files: List[str] =
             fullname: str
             try:
                 source, fullname = file.split(':', 1)
+                if "/" in source:
+                    # ':' as part of filename
+                    source = 'filesystem'
+                    fullname = file
             except ValueError:
                 source = 'filesystem'
                 fullname = file

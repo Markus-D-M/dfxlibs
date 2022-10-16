@@ -14,14 +14,3 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 """
-
-from . import partitions
-from . import files
-from . import events
-from . import registry
-from . import browser
-from . import usnjournal
-from . import prefetch
-
-__all__ = ['partitions', 'files', 'events', 'registry', 'browser', 'usnjournal', 'prefetch']
-

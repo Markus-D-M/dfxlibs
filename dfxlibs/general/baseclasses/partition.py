@@ -8,7 +8,7 @@
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
 
-       http://www.apache.org/licenses/LICENSE-2.0
+       https://www.apache.org/licenses/LICENSE-2.0
 
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,10 +21,13 @@ import pytsk3
 import re
 import os
 import pyvshadow
-from typing import TYPE_CHECKING, Optional, Iterator, Tuple, Dict, List
+from typing import TYPE_CHECKING, Optional, Iterator, Tuple, Dict, Callable
 from dfxlibs.general.baseclasses.file import File
+from dfxlibs.general.baseclasses.defaultclass import DefaultClass
 from dfxlibs.general.filesystems.ntfs import VSSStore
+from dfxlibs.general.helpers import bytes_to_hr
 import logging
+from time import time
 
 if TYPE_CHECKING:
     from dfxlibs.general.image import Image
@@ -148,7 +151,7 @@ TSK_FS_TYPE = {
 }
 
 
-class Partition:
+class Partition(DefaultClass):
     def __init__(self, source: 'Image', partition_info: pytsk3.TSK_VS_PART_INFO = None):
         self._source = source
         self._vss_volume = None
@@ -216,6 +219,38 @@ class Partition:
             return self._filesystem
         else:
             raise AttributeError('Partition not allocated or filesystem unknown')
+
+    def carve(self, carve_func: Callable[[bytes, int], Iterator[any]]) -> Iterator:
+        data_count = 0
+        chunk_size_mb = 50
+        chunk_size = 1024 * 1024 * chunk_size_mb
+        current_data = b''
+        current_offset = 0
+        last_round = False
+        element_count = 0
+        last_print = 0
+        while not last_round:
+            data_chunk = self.read(chunk_size)
+            data_count += 1
+            if not data_chunk:
+                data_chunk = b'\0' * chunk_size
+                last_round = True
+            current_data = current_data[current_offset:] + data_chunk
+            current_offset = 0
+            current_data_len = len(current_data)
+
+            while current_data_len - current_offset > 0xffffff:
+                if last_print + 2 < time():
+                    print(f'\r{bytes_to_hr(data_count * chunk_size)}/{element_count} potential findings...', end='')
+                    last_print = time()
+                for element in carve_func(current_data, current_offset):
+                    if type(element) is int:
+                        current_offset = element
+                        break
+                    else:
+                        element_count += 1
+                        yield element
+        print(f'\r{" " * 60}\r', end='')  # delete progress line
 
     def get_volume_shadow_copy_filesystems(self) -> Tuple[int, pyvshadow.store, Iterator[pytsk3.FS_Info]]:
         if self.type_id != pytsk3.TSK_FS_TYPE_NTFS:
@@ -316,10 +351,3 @@ class Partition:
             f'Partition {self.addr}:\n'
             f'  {self.descr}\n'
         )
-
-    def __repr__(self):
-        return (f'<{self.__class__.__name__} ' +
-                ' '.join([f'{attr}={repr(self.__getattribute__(attr))}'
-                          for attr in self.__dict__
-                          if self.__getattribute__(attr) is not None and attr[0] != '_']) +
-                ' />')

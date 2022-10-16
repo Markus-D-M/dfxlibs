@@ -25,8 +25,7 @@ from typing import List
 from dfxlibs.general.image import Image
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.general.helpers.db_filter import db_like
-from dfxlibs.windows.events.evtxfile import EvtxFile
-from dfxlibs.windows.events.evtxcarver import EvtxCarver
+from dfxlibs.windows.events.evtxfile import EvtxFile, evtx_carver
 from dfxlibs.windows.events.event import Event
 from dfxlibs.general.helpers.db_filter import db_eq, db_or, db_and, db_in, db_gt
 
@@ -112,8 +111,8 @@ def carve_evtx(image: Image, meta_folder: str, part: str = None) -> None:
 
         sqlite_events_con, sqlite_events_cur = Event.db_open(meta_folder, partition.part_name)
         record_count = 0
-        carver = EvtxCarver(partition)
-        for event in carver.records:
+        event: Event
+        for event in partition.carve(evtx_carver):
             if event.db_insert(sqlite_events_cur):
                 record_count += 1
 

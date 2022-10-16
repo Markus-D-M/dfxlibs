@@ -19,12 +19,12 @@
 
 from .excelwriter import ExcelWriter
 
-__all__ = ['ExcelWriter']
+__all__ = ['ExcelWriter', 'bytes_to_hr']
 
 
 def bytes_to_hr(b: int) -> str:
     """
-    Converts a given size in bytes to a human readable string
+    Converts a given size in bytes to a human-readable string
 
     >>> bytes_to_hr(3)
     '3.0B'

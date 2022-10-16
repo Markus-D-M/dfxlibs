@@ -17,16 +17,65 @@
 
 import logging
 from struct import unpack
-from typing import Iterator
+from typing import Iterator, Union
 from Evtx.Evtx import ChunkHeader
 import dfxlibs
 from lxml import etree
-from Evtx.BinaryParser import OverrunBufferException
 from lxml.etree import XMLSyntaxError
 from .xml_to_dict import xml_to_dict
 from .event import Event
+from Evtx.BinaryParser import OverrunBufferException, ParseException
 
 _logger = logging.getLogger(__name__)
+
+
+EVTX_CARVER_OFFSET_STEP = 512
+
+
+def evtx_carver(current_data: bytes, current_offset: int) -> Iterator[Union[int, 'EvtxFile']]:
+    """
+    Carving function for evtx records in data buffers.
+
+    :param current_data: data buffer
+    :type current_data: bytes
+    :param current_offset: current offset in the data buffer to analyse
+    :type current_offset: int
+    :return: Iterator for carved evtx record or next offset to carve
+    """
+    try:
+        candidate_offset = current_data.index(b'ElfChnk\0', current_offset, -64*1024)
+    except ValueError:
+        yield len(current_data)-64*1024 + EVTX_CARVER_OFFSET_STEP
+        return
+
+    if candidate_offset % 512 != 0:
+        yield candidate_offset - candidate_offset % EVTX_CARVER_OFFSET_STEP + EVTX_CARVER_OFFSET_STEP
+        return
+
+    current_offset = candidate_offset
+
+    if current_data[current_offset:current_offset + 8] != b'ElfChnk\0' or \
+            current_data[current_offset + 40] != 128 or \
+            current_data[current_offset + 512:current_offset + 516] != b'**\0\0':
+        yield current_offset + EVTX_CARVER_OFFSET_STEP
+        return
+
+    chunk = ChunkHeader(current_data, current_offset)
+    for record in chunk.records():
+        try:
+            evt_tree: etree = record.lxml()
+        except (OverrunBufferException, UnicodeDecodeError, KeyError, ParseException,
+                XMLSyntaxError, AttributeError, IndexError, RecursionError):
+            # Parse errors for partial destroyed chunks -> ignore records
+            continue
+        try:
+            event = xml_to_dict(evt_tree)
+            event['carved'] = True
+        except (ValueError, IndexError):
+            continue
+        yield Event(**event)
+    yield current_offset + EVTX_CARVER_OFFSET_STEP
+    return
 
 
 class EvtxFile:

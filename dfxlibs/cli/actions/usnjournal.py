@@ -26,7 +26,7 @@ import time
 
 from dfxlibs.general.image import Image
 from dfxlibs.general.baseclasses.file import File
-from dfxlibs.windows.usnjournal.usnrecordv2 import USNRecordV2
+from dfxlibs.windows.usnjournal.usnrecordv2 import USNRecordV2, usn_carver
 from dfxlibs.general.helpers.db_filter import db_eq, db_and
 
 
@@ -92,7 +92,7 @@ def prepare_usnjournal(image: Image, meta_folder: str, part: str = None) -> None
         while journal.tell() < journal.size:
             data = journal.read(65536).lstrip(b'\0')
             if data:
-                first_entry = journal.tell() - len(data)
+                first_entry = journal.tell() - len(data) - 8
                 journal.seek(first_entry)
                 break
         # step 3: parsing records
@@ -184,66 +184,27 @@ def carve_usnjournal(image: Image, meta_folder: str, part: str = None) -> None:
 
         sqlite_usn_con, sqlite_usn_cur = USNRecordV2.db_open(meta_folder, partition.part_name)
 
-        data_count = 0
-        partition_bytes_offset = 0
-        chunk_size_mb = 50
-        record_count = 0
-        chunk_size = 1024 * 1024 * chunk_size_mb
-        current_data = b''
-        current_data_offset = 0
-        last_round = False
         parent_folders = {}
-        while not last_round:
-            data_chunk = partition.read_buffer(chunk_size, partition_bytes_offset)
-            partition_bytes_offset += len(data_chunk)
-            data_count += 1
-            if not data_chunk:
-                data_chunk = b'\0' * chunk_size
-                last_round = True
-            current_data = current_data[current_data_offset:] + data_chunk
-            current_data_offset = 0
-            current_data_len = len(current_data)
-            print(f'\r{data_count * chunk_size_mb}MiB...', end='')
-            while current_data_len - current_data_offset > 0xffff:
-                if current_data[current_data_offset:current_data_offset+2] == b'\0\0' or \
-                        current_data[current_data_offset+2:current_data_offset+8] != b'\0\0\2\0\0\0':
-                    # only check V2
-                    current_data_offset += 8
-                    continue
+        count = 0
+        usnrecord: USNRecordV2
+        for usnrecord in partition.carve(usn_carver):
+            parent_addr_seq = f'{usnrecord.par_addr}-{usnrecord.par_seq}'
+            if parent_addr_seq in parent_folders:
+                usnrecord.parent_folder = parent_folders[parent_addr_seq]
+            else:
+                parent: File = File.db_select_one(sqlite_files_cur,
+                                                  db_and(db_eq('meta_addr', usnrecord.par_addr),
+                                                         db_eq('meta_seq', usnrecord.par_seq),
+                                                         db_eq('is_dir', 1)))
+                if parent:
+                    parent_folders[parent_addr_seq] = parent.parent_folder + '/' + parent.name
+                    usnrecord.parent_folder = parent.parent_folder + '/' + parent.name
+                else:
+                    parent_folders[parent_addr_seq] = ''
+            if usnrecord.db_insert(sqlite_usn_cur):
+                count += 1
 
-                file_pos = current_data_offset
-                try:
-                    rec_len = unpack('<I', current_data[current_data_offset:current_data_offset + 4])[0]
-                    if rec_len < 60:
-                        raise AttributeError
-                    usnrecord: USNRecordV2 = USNRecordV2.from_raw(current_data[current_data_offset:current_data_offset + rec_len])
-                    usnrecord.carved = True
-                    current_data_offset += rec_len
-                    # Adjust Offset
-                    if current_data_offset % 8 != 0:
-                        current_data_offset += 8 - (current_data_offset % 8)
-
-                    # valid record found
-                    parent_addr_seq = f'{usnrecord.par_addr}-{usnrecord.par_seq}'
-                    if parent_addr_seq in parent_folders:
-                        usnrecord.parent_folder = parent_folders[parent_addr_seq]
-                    else:
-                        parent: File = File.db_select_one(sqlite_files_cur,
-                                                          db_and(db_eq('meta_addr', usnrecord.par_addr),
-                                                                 db_eq('meta_seq', usnrecord.par_seq),
-                                                                 db_eq('is_dir', 1)))
-                        if parent:
-                            parent_folders[parent_addr_seq] = parent.parent_folder + '/' + parent.name
-                            usnrecord.parent_folder = parent.parent_folder + '/' + parent.name
-                        else:
-                            parent_folders[parent_addr_seq] = ''
-                    if usnrecord.db_insert(sqlite_usn_cur):
-                        record_count += 1
-                except AttributeError:
-                    current_data_offset = file_pos + 8
-
-        print(f'\r{" "*60}\r', end='')  # delete progress line
         sqlite_usn_con.commit()
-        _logger.info(f'{record_count} usn records added for partition {partition.part_name}')
+        _logger.info(f'{count} usn records added for partition {partition.part_name}')
 
     _logger.info('carving usn records finished')

@@ -21,9 +21,10 @@ from json import dumps, loads
 
 
 from dfxlibs.general.baseclasses.databaseobject import DatabaseObject
+from dfxlibs.general.baseclasses.defaultclass import DefaultClass
 
 
-class Event(DatabaseObject):
+class Event(DatabaseObject, DefaultClass):
     def __init__(self, timestamp: datetime = datetime.fromtimestamp(0, tz=timezone.utc),
                  event_id: int = -1, channel: str = '',
                  event_record_id: int = -1, opcode: int = -1, level: int = -1, computer: str = '',
@@ -50,10 +51,3 @@ class Event(DatabaseObject):
     @staticmethod
     def db_primary_key() -> List[str]:
         return ['channel', 'computer', 'event_record_id']
-
-    def __repr__(self):
-        return (f'<{self.__class__.__name__} ' +
-                ' '.join([f'{attr}={repr(self.__getattribute__(attr))}'
-                          for attr in self.__dict__
-                          if self.__getattribute__(attr) is not None and attr[0] != '_']) +
-                ' />')

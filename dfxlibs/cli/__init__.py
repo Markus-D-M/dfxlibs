@@ -30,7 +30,7 @@ from json import dumps, loads, JSONDecodeError
 
 import dfxlibs
 
-from dfxlibs.cli import actions, environment
+from dfxlibs.cli import actions, environment, arguments
 
 __all__ = ['actions', 'environment']
 
@@ -132,8 +132,8 @@ def parse_arguments():
                                     'proceeding calls, it will overwrite the parameter in the meta information folder '
                                     '(so be careful to not mix up different images in one meta information folder).')
     group_general.add_argument('--part',
-                               help='Specify partition for actions like --scan_files. It must be named as given in the '
-                                    '--list_partitions output. Without --part all partitions in an image will be '
+                               help='Specify partition for actions like --prepare_files. It must be named as given in '
+                                    'the --list_partitions output. Without --part all partitions in an image will be '
                                     'included.')
     group_preparation = parser.add_argument_group('Preparation', 'These arguments prepare the data from the image for '
                                                                  'further analysis')
@@ -161,7 +161,10 @@ def parse_arguments():
                                    help='read the windows registry and stores them in a sqlite database in the '
                                         'meta_folder. You can specify a partition with --part.')
     group_preparation.add_argument('-pusn', '--prepare_usn', action='store_true',
-                                   help='reading ntfs usn journals ans stores the entries in a sqlite database in the '
+                                   help='reading ntfs usn journals and stores the entries in a sqlite database in the '
+                                        'meta_folder. You can specify a partition with --part.')
+    group_preparation.add_argument('-ppf', '--prepare_prefetch', action='store_true',
+                                   help='reading prefetch files and stores the entries in a sqlite database in the '
                                         'meta_folder. You can specify a partition with --part.')
 
     group_carve = parser.add_argument_group('Carving', 'These arguments are for different carving options.')
@@ -171,6 +174,10 @@ def parse_arguments():
     group_carve.add_argument('-cusn', '--carve_usn', action='store_true', help='carve for ntfs usn journal entries and '
                                                                                'stores them in the same database as '
                                                                                'for the --prepare_usn argument')
+    group_carve.add_argument('-cpf', '--carve_prefetch', action='store_true', help='carve for prefetch files and '
+                                                                                   'stores them in the same database '
+                                                                                   'as for the --prepare_prefetch '
+                                                                                   'argument')
 
     group_actions = parser.add_argument_group('Special actions', 'These parameters contains short and simple actions.')
     group_actions.add_argument('-lp', '--list_partitions', action='store_true',
@@ -179,7 +186,7 @@ def parse_arguments():
                                help='Extracts files from the image and stores them to the meta_folder. You have to '
                                     'give the full path and filename (with leading slash - even slashes instead of '
                                     'backslashes for windows images) or a meta address. As default source "filesystem" '
-                                    'for regular files in the image will be used. You can give another filesource '
+                                    'for regular files in the image will be used. You can give another file-source '
                                     '(e.g. "vss#0" for shadow copy store 0) by just adding it in front of your path '
                                     'and separate it with a colon (e.g. "vss#0:/path/testfile.txt" for '
                                     '/path/testfile.txt from vss#0). You can give multiple files at once')
@@ -187,7 +194,7 @@ def parse_arguments():
     parser.add_argument('-a', '--analyze', nargs='+', help='Analyze prepared data. Possible values are: '
                                                            '"sessions" list user sessions'
                                                            '"browser_history" scans chrome history')
-
+    parser = arguments.arguments.get_argument_parser()
     return parser.parse_args()
 
 
@@ -207,6 +214,8 @@ def main():
         env['image'] = dfxlibs.general.image.Image(image_files)
         _logger.info(f'using image: {image_files}')
 
+    arguments.arguments.execute_arguments(env)
+
     if env['args'].list_partitions:
         try:
             dfxlibs.cli.actions.partitions.list_partitions(env['image'])
@@ -217,16 +226,15 @@ def main():
     if env['args'].extract:
         try:
             dfxlibs.cli.actions.files.extract(env['image'], meta_folder=env['meta_folder'],
-                                              part=env['args'].part, files=env['args'].extract)
+                                                part=env['args'].part, files=env['args'].extract)
         except AttributeError as e:
             print(e)
             sys.exit(2)
 
-
     if env['args'].prepare_files:
         try:
             dfxlibs.cli.actions.files.prepare_files(env['image'], meta_folder=env['meta_folder'],
-                                                    part=env['args'].part)
+                                                      part=env['args'].part)
         except AttributeError as e:
             print(e)
             sys.exit(2)
@@ -234,7 +242,7 @@ def main():
     if env['args'].prepare_vss:
         try:
             dfxlibs.cli.actions.files.prepare_vss_files(env['image'], meta_folder=env['meta_folder'],
-                                                        part=env['args'].part)
+                                                          part=env['args'].part)
         except AttributeError as e:
             print(e)
             sys.exit(2)
@@ -242,7 +250,7 @@ def main():
     if env['args'].hash:
         try:
             dfxlibs.cli.actions.files.hash_files(env['image'], meta_folder=env['meta_folder'],
-                                                 part=env['args'].part, hash_algorithms=env['args'].hash)
+                                                   part=env['args'].part, hash_algorithms=env['args'].hash)
         except AttributeError as e:
             print(e)
             sys.exit(2)
@@ -250,21 +258,21 @@ def main():
     if env['args'].filetypes:
         try:
             dfxlibs.cli.actions.files.file_types(env['image'], meta_folder=env['meta_folder'],
-                                                 part=env['args'].part)
+                                                   part=env['args'].part)
         except AttributeError as e:
             print(e)
             sys.exit(2)
     if env['args'].prepare_usn:
         try:
             dfxlibs.cli.actions.usnjournal.prepare_usnjournal(env['image'], meta_folder=env['meta_folder'],
-                                                              part=env['args'].part)
+                                                                part=env['args'].part)
         except (AttributeError, IOError, ValueError) as e:
             print(e)
             sys.exit(2)
     if env['args'].carve_usn:
         try:
             dfxlibs.cli.actions.usnjournal.carve_usnjournal(env['image'], meta_folder=env['meta_folder'],
-                                                            part=env['args'].part)
+                                                              part=env['args'].part)
         except (AttributeError, IOError) as e:
             print(e)
             sys.exit(2)
@@ -272,24 +280,40 @@ def main():
     if env['args'].prepare_evtx:
         try:
             dfxlibs.cli.actions.events.prepare_evtx(env['image'], meta_folder=env['meta_folder'],
-                                                    part=env['args'].part)
+                                                      part=env['args'].part)
         except (AttributeError, IOError) as e:
             print(e)
             sys.exit(2)
     if env['args'].carve_evtx:
         try:
             dfxlibs.cli.actions.events.carve_evtx(env['image'], meta_folder=env['meta_folder'],
-                                                  part=env['args'].part)
+                                                    part=env['args'].part)
         except (AttributeError, IOError) as e:
             print(e)
             sys.exit(2)
     if env['args'].prepare_reg:
         try:
             dfxlibs.cli.actions.registry.prepare_registry(env['image'], meta_folder=env['meta_folder'],
+                                                            part=env['args'].part)
+        except (AttributeError, IOError) as e:
+            print(e)
+            sys.exit(2)
+
+    if env['args'].prepare_prefetch:
+        try:
+            dfxlibs.cli.actions.prefetch.prepare_prefetch(env['image'], meta_folder=env['meta_folder'],
+                                                            part=env['args'].part)
+        except (AttributeError, IOError) as e:
+            print(e)
+            sys.exit(2)
+    if env['args'].carve_prefetch:
+        try:
+            dfxlibs.cli.actions.prefetch.carve_prefetch(env['image'], meta_folder=env['meta_folder'],
                                                           part=env['args'].part)
         except (AttributeError, IOError) as e:
             print(e)
             sys.exit(2)
+
     if env['args'].analyze:
         results = {}
         if 'sessions' in env['args'].analyze:

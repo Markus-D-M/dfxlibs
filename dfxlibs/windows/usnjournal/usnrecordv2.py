@@ -15,17 +15,60 @@
     limitations under the License.
 """
 
-from typing import List
+from typing import List, Iterator, Union
 from datetime import datetime, timezone
 from struct import unpack
 
-
+from dfxlibs.general.baseclasses.defaultclass import DefaultClass
 from dfxlibs.general.baseclasses.databaseobject import DatabaseObject
 from dfxlibs.windows.helpers import MAX_FILETIME, EPOCH_AS_FILETIME, filetime_to_dt, ALL_FILE_ATTRIBUTE, \
     hr_file_attribute
 
 
-class USNRecordV2(DatabaseObject):
+USN_CARVER_OFFSET_STEP = 8
+
+
+def usn_carver(current_data: bytes, current_offset: int) -> Iterator[Union[int, 'USNRecordV2']]:
+    """
+    Carving function for usn records in data buffers.
+
+    :param current_data: data buffer
+    :type current_data: bytes
+    :param current_offset: current offset in the data buffer to analyse
+    :type current_offset: int
+    :return: Iterator for carved usn record or next offset to carve
+    """
+    try:
+        candidate_offset = current_data.index(b'\0\0\2\0\0\0', current_offset, -512)
+    except ValueError:
+        yield len(current_data)-512 + USN_CARVER_OFFSET_STEP
+        return
+
+    if candidate_offset % 8 != 2:
+        yield candidate_offset - candidate_offset % 8 + USN_CARVER_OFFSET_STEP
+        return
+
+    current_offset = candidate_offset-2
+    if current_data[current_offset:current_offset + 2] == b'\0\0' or \
+            current_data[current_offset + 2:current_offset + 8] != b'\0\0\2\0\0\0':
+        # only check V2
+        yield current_offset + USN_CARVER_OFFSET_STEP
+
+    try:
+        rec_len = unpack('<I', current_data[current_offset:current_offset + 4])[0]
+        if rec_len < 60:
+            raise AttributeError
+        usnrecord: USNRecordV2 = USNRecordV2.from_raw(current_data[current_offset:current_offset + rec_len])
+        usnrecord.carved = True
+        yield usnrecord
+        yield current_offset + USN_CARVER_OFFSET_STEP
+        return
+    except AttributeError:
+        pass
+    yield current_offset + USN_CARVER_OFFSET_STEP
+
+
+class USNRecordV2(DatabaseObject, DefaultClass):
     USN_REASON_BASIC_INFO_CHANGE = 0x00008000
     USN_REASON_CLOSE = 0x80000000
     USN_REASON_COMPRESSION_CHANGE = 0x00020000
@@ -49,10 +92,13 @@ class USNRecordV2(DatabaseObject):
     USN_REASON_SECURITY_CHANGE = 0x00000800
     USN_REASON_STREAM_CHANGE = 0x00200000
     USN_REASON_TRANSACTED_CHANGE = 0x00400000
+    USN_REASON_DESIRED_STORAGE_CLASS_CHANGE = 0x01000000  # not well documented, found via fsutil - see
+    # https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_desired_storage_class_information
 
     ALL_USN_REASON = 0x00008000 | 0x80000000 | 0x00020000 | 0x00000002 | 0x00000001 | 0x00000004 | 0x00000400 | \
         0x00040000 | 0x00000100 | 0x00000200 | 0x00010000 | 0x00004000 | 0x00800000 | 0x00000020 | 0x00000010 | \
-        0x00000040 | 0x00080000 | 0x00002000 | 0x00001000 | 0x00100000 | 0x00000800 | 0x00200000 | 0x00400000
+        0x00000040 | 0x00080000 | 0x00002000 | 0x00001000 | 0x00100000 | 0x00000800 | 0x00200000 | 0x00400000 | \
+        0x01000000
 
     USN_REASON_DESCRIPTION = {
         USN_REASON_BASIC_INFO_CHANGE: 'Attr_Changed',
@@ -77,7 +123,8 @@ class USNRecordV2(DatabaseObject):
         USN_REASON_REPARSE_POINT_CHANGE: 'Reparse_Point_Changed',
         USN_REASON_SECURITY_CHANGE: 'Access_Right_Changed',
         USN_REASON_STREAM_CHANGE: 'Named_Stream_Changed',
-        USN_REASON_TRANSACTED_CHANGE: 'Transacted_Change'
+        USN_REASON_TRANSACTED_CHANGE: 'Transacted_Change',
+        USN_REASON_DESIRED_STORAGE_CLASS_CHANGE: 'Desired_Storage_Class_Changed'
     }
 
     USN_SOURCE_AUXILIARY_DATA = 0x00000002
@@ -127,7 +174,7 @@ class USNRecordV2(DatabaseObject):
             usn = usn - 0x10000000000000000
 
         if reason == 0 or reason & ~cls.ALL_USN_REASON:
-            raise AttributeError(f'Invalid Reason {reason}')
+            raise AttributeError(f'Invalid Reason {reason} (USN: {usn}/file: {file_addr}:{file_seq})')
         if file_attr == 0 or file_attr & ~ALL_FILE_ATTRIBUTE:
             raise AttributeError(f'Invalid File Attribute {file_attr}')
         if source_info > 0x0000000f:
@@ -137,7 +184,7 @@ class USNRecordV2(DatabaseObject):
         if fn_offset + fn_len > len(raw):
             raise AttributeError('Invalid filename length')
         try:
-            fname = raw[fn_offset: fn_offset + fn_len].decode('utf16')
+            fname = raw[fn_offset: fn_offset + fn_len].decode('utf-16be')
         except UnicodeDecodeError:
             raise AttributeError('Invalid filename')
         if '\0' in fname:
@@ -172,10 +219,3 @@ class USNRecordV2(DatabaseObject):
     @staticmethod
     def db_primary_key() -> List[str]:
         return ['usn']
-
-    def __repr__(self):
-        return (f'<{self.__class__.__name__} ' +
-                ' '.join([f'{attr}={repr(self.__getattribute__(attr))}'
-                          for attr in self.__dict__
-                          if self.__getattribute__(attr) is not None and attr[0] != '_']) +
-                ' />')

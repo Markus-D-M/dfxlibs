@@ -15,15 +15,16 @@
     limitations under the License.
 """
 
-from typing import List, Any
+from typing import List
 from datetime import datetime, timezone
 from json import loads, dumps
 
 
 from dfxlibs.general.baseclasses.databaseobject import DatabaseObject
+from dfxlibs.general.baseclasses.defaultclass import DefaultClass
 
 
-class RegistryEntry(DatabaseObject):
+class RegistryEntry(DatabaseObject, DefaultClass):
     @staticmethod
     def _value_to_json(value) -> str:
         if type(value) is bytes:
@@ -57,10 +58,3 @@ class RegistryEntry(DatabaseObject):
     @staticmethod
     def db_primary_key() -> List[str]:
         return ['parent_key', 'name']
-
-    def __repr__(self):
-        return (f'<{self.__class__.__name__} ' +
-                ' '.join([f'{attr}={repr(self.__getattribute__(attr))}'
-                          for attr in self.__dict__
-                          if self.__getattribute__(attr) is not None and attr[0] != '_']) +
-                ' />')

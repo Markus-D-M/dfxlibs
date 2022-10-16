@@ -5,3 +5,9 @@ python-registry
 python-evtx
 lxml
 XlsxWriter
+py-tlsh
+python-magic
+libvshadow-python
+
+[:platform_system == "Windows"]
+python-magic-bin

@@ -37,7 +37,7 @@ class Image:
     :raise IOError: Unknown file format
     """
 
-    VS_TYPES = {0x00: 'autodetect', 0x01: 'DOS', 0x02: 'BSD', 0x08: 'Mac', 0x10: 'GPT', 0xffff: 'unsupported'}
+    VS_TYPES = {0x00: 'autodetect', 0x01: 'MBR', 0x02: 'BSD', 0x08: 'Mac', 0x10: 'GPT', 0xffff: 'unsupported'}
 
     def __init__(self, filenames: Union[str, List[str]]):
         # convert input parameter to list if necessary

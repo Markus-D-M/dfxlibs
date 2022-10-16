@@ -20,8 +20,10 @@ from typing import TYPE_CHECKING, Optional, Iterator, List
 from datetime import datetime, timezone
 import struct
 import logging
+import os
 
-from .databaseobject import DatabaseObject
+from dfxlibs.general.baseclasses.databaseobject import DatabaseObject
+from dfxlibs.general.baseclasses.defaultclass import DefaultClass
 
 from dfxlibs.general.filesystems.ntfs import NtfsAds, NTFSAttrFileName
 
@@ -32,7 +34,7 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
-class File(DatabaseObject):
+class File(DatabaseObject, DefaultClass):
     def __init__(self, tsk3_file: pytsk3.File = None, parent_partition: 'Partition' = None):
         # self._full_name = '/' + path.lstrip('/')
         self._tsk3_file = tsk3_file
@@ -154,15 +156,27 @@ class File(DatabaseObject):
             self._tsk3_file = partition.get_volume_shadow_copy_filesystem(store_id).open_meta(self.meta_addr)
         self._offset = 0
 
-    def seek(self, offset: int):
+    def seek(self, offset: int, whence: int = os.SEEK_SET):
         """
         Sets the current position in the file.
 
         :param offset: number of bytes from the beginning of the file
         :type offset: int
+        :param whence: This is optional and defaults to 0 which means absolute file positioning, other values are 1
+        which means seek relative to the current position and 2 means seek relative to the file's end.
+        :type whence: int
         :return:
         """
-        self._offset = offset
+        if offset < 0 or offset > self.size:
+            raise IOError('offset out of bounds')
+        if whence == os.SEEK_SET:
+            self._offset = min(offset, self.size)
+        elif whence == os.SEEK_CUR:
+            self._offset = min(self._offset + offset, self.size)
+        elif whence == os.SEEK_END:
+            self._offset = max(0, self.size - offset)
+        else:
+            raise RuntimeError('unknown whence value %s' % whence)
 
     def tell(self) -> int:
         """
@@ -231,13 +245,6 @@ class File(DatabaseObject):
             return f'/{self.name}'
         else:
             return f'{self.parent_folder}/{self.name}'
-
-    def __repr__(self):
-        return (f'<{self.__class__.__name__} ' +
-                ' '.join([f'{attr}={repr(self.__getattribute__(attr))}'
-                          for attr in self.__dict__
-                          if self.__getattribute__(attr) is not None and attr[0] != '_']) +
-                ' />')
 
     @property
     def ntfs_ads(self) -> Iterator['File']:

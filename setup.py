@@ -26,6 +26,7 @@ setup(
         "py-tlsh",
         "python-magic",
         "python-magic-bin;platform_system=='Windows'",
-        "libvshadow-python"
+        "libvshadow-python",
+        "libscca-python"
     ]
 )

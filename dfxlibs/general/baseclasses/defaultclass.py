@@ -15,13 +15,11 @@
     limitations under the License.
 """
 
-from . import partitions
-from . import files
-from . import events
-from . import registry
-from . import browser
-from . import usnjournal
-from . import prefetch
 
-__all__ = ['partitions', 'files', 'events', 'registry', 'browser', 'usnjournal', 'prefetch']
-
+class DefaultClass:
+    def __repr__(self):
+        return (f'<{self.__class__.__name__} ' +
+                ' '.join([f'{attr}={repr(self.__getattribute__(attr))}'
+                          for attr in self.__dict__
+                          if self.__getattribute__(attr) is not None and attr[0] != '_']) +
+                ' />')

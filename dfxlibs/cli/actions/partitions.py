@@ -21,10 +21,12 @@ import logging
 
 import dfxlibs
 from dfxlibs.general.helpers import bytes_to_hr
+from dfxlibs.cli.arguments import register_argument
 
 _logger = logging.getLogger(__name__)
 
 
+@register_argument('-lp', '--list_partitions', action='store_true', help='print partition list', group_id='special')
 def list_partitions(image: dfxlibs.general.image.Image) -> None:
     """
     List all partitions in a given image

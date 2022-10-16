@@ -21,6 +21,7 @@ import struct
 import pytsk3
 from datetime import datetime, timezone
 from dfxlibs.windows.helpers import filetime_to_dt
+from dfxlibs.general.baseclasses.defaultclass import DefaultClass
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -48,7 +49,7 @@ class NtfsAds:
         self.attr_id = attr_id
 
 
-class NTFSAttrFileName:
+class NTFSAttrFileName(DefaultClass):
     def __init__(self, raw: bytes):
         parent_ref, crtime, mtime, ctime, atime, self.asize, self.size, self.flags, \
             self.ea_reparse, self.fname_len, self.fname_ns = struct.unpack('<7Q2I2B', raw[:66])
@@ -74,10 +75,3 @@ class NTFSAttrFileName:
             self.atime = filetime_to_dt(atime)
         except ValueError:
             self.atime = datetime.fromtimestamp(0, tz=timezone.utc)
-
-    def __repr__(self):
-        return (f'<{self.__class__.__name__} ' +
-                ' '.join([f'{attr}={repr(self.__getattribute__(attr))}'
-                          for attr in self.__dict__
-                          if self.__getattribute__(attr) is not None and attr[0] != '_']) +
-                ' />')
