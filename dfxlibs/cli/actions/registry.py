@@ -21,11 +21,16 @@ import logging
 import sqlite3
 from Registry import Registry, RegistryParse
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from dfxlibs.windows.registry.registryentry import RegistryEntry
 from dfxlibs.general.image import Image
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.general.helpers.db_filter import db_and, db_like, db_eq
+from dfxlibs.cli.arguments import register_argument
+
+if TYPE_CHECKING:
+    from dfxlibs.cli.environment import Environment
 
 _logger = logging.getLogger(__name__)
 
@@ -102,20 +107,24 @@ def recursive_registry(key, db_cur: sqlite3.Cursor = None, mount_point: str = No
                 _logger.warning(f'Error while parsing subkey from {path}/{name}: {str(e)}')
 
 
-def prepare_registry(image: Image, meta_folder: str, part: str = None) -> None:
+@register_argument('-preg', '--prepare_reg', action='store_true', help='read the windows registry and stores them in a '
+                                                                       'sqlite database in the meta_folder. You can '
+                                                                       'specify a partition with --part.',
+                   group_id='prepare')
+def prepare_registry(env: 'Environment') -> None:
     """
     scans the windows registry in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only the files and directories of this partition are scanned
 
-    :param image: image file
-    :type image: Image
-    :param meta_folder: name of the meta information folder to store/read file database
-    :type meta_folder: str
-    :param part: partition name in the format "X_Y"
-    :type part: str
+    :param env: cli environment
+    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     """
+    image = env['image']
+    part = env['args'].part
+    meta_folder = env['meta_folder']
+
     if image is None:
         raise AttributeError('ERROR: No image file specified (--image)')
 

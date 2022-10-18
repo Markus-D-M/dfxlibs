@@ -21,34 +21,42 @@
 
 import logging
 
+from typing import TYPE_CHECKING
 from struct import unpack
 import time
 
-from dfxlibs.general.image import Image
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.windows.usnjournal.usnrecordv2 import USNRecordV2, usn_carver
 from dfxlibs.general.helpers.db_filter import db_eq, db_and
+from dfxlibs.cli.arguments import register_argument
+
+if TYPE_CHECKING:
+    from dfxlibs.cli.environment import Environment
 
 
 _logger = logging.getLogger(__name__)
 
 
-def prepare_usnjournal(image: Image, meta_folder: str, part: str = None) -> None:
+@register_argument('-pusn', '--prepare_usn', action='store_true', help='reading ntfs usn journals and stores the '
+                                                                       'entries in a sqlite database in the '
+                                                                       'meta_folder. You can specify a partition with '
+                                                                       '--part.', group_id='prepare')
+def prepare_usnjournal(env: 'Environment') -> None:
     """
     read windows usn journal entries in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only the journal of this partition is scanned
 
-    :param image: image file
-    :type image: Image
-    :param meta_folder: name of the meta information folder to store/read file database
-    :type meta_folder: str
-    :param part: partition name in the format "X_Y"
-    :type part: str
+    :param env: cli environment
+    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     :raise IOError: if image is not scanned for files
     :raise ValueError: if USN journal is broken
     """
+    image = env['image']
+    part = env['args'].part
+    meta_folder = env['meta_folder']
+
     if image is None:
         raise AttributeError('ERROR: No image file specified (--image)')
 
@@ -71,31 +79,7 @@ def prepare_usnjournal(image: Image, meta_folder: str, part: str = None) -> None
             _logger.info(f'no usn journal on partition {partition.part_name} found')
             continue
         journal.open(partition)
-        # find first usn entry
-        # step 1: jump to the middle of the file and check for data, repeat for halfs to get starting area
-        offset = journal.size // 2
-        chunksize = 0
-        for i in range(20):
-            chunksize = journal.size // (2 ** (i+1))
-            journal.seek(offset)
-            data = journal.read(1024).lstrip(b'\0')
-            if data:
-                offset = offset - (chunksize // 2)
-            else:
-                offset = offset + (chunksize // 2)
 
-        # step 2: fine search for beginning of usn records
-        if offset > chunksize:
-            journal.seek(offset - chunksize)
-        else:
-            journal.seek(0)
-        while journal.tell() < journal.size:
-            data = journal.read(65536).lstrip(b'\0')
-            if data:
-                first_entry = journal.tell() - len(data) - 8
-                journal.seek(first_entry)
-                break
-        # step 3: parsing records
         last_time = time.time()  # for showing progress
         parent_folders = {}  # cache parent_folder searches
         record_count = 0
@@ -152,22 +136,25 @@ def prepare_usnjournal(image: Image, meta_folder: str, part: str = None) -> None
     _logger.info('preparing usn records finished')
 
 
-def carve_usnjournal(image: Image, meta_folder: str, part: str = None) -> None:
+@register_argument('-cusn', '--carve_usn', action='store_true', help='carve for ntfs usn journal entries and stores '
+                                                                     'them in the same database as for the '
+                                                                     '--prepare_usn argument', group_id='carve')
+def carve_usnjournal(env: 'Environment') -> None:
     """
     carve partitions for usn journal entries in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only this partition is scanned.
 
-    :param image: image file
-    :type image: Image
-    :param meta_folder: name of the meta information folder to store/read file database
-    :type meta_folder: str
-    :param part: partition name in the format "X_Y"
-    :type part: str
+    :param env: cli environment
+    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     :raise IOError: if image is not scanned for files
     :raise ValueError: if USN journal is broken
     """
+    image = env['image']
+    part = env['args'].part
+    meta_folder = env['meta_folder']
+
     if image is None:
         raise AttributeError('ERROR: No image file specified (--image)')
 

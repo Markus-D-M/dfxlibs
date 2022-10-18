@@ -17,12 +17,17 @@
 import datetime
 import logging
 import sqlite3
+from typing import TYPE_CHECKING
 
 from dfxlibs.general.image import Image
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.windows.prefetch.prefetchfile import PrefetchFile, prefetch_carver
 from dfxlibs.windows.prefetch.executes import Executes
-from dfxlibs.general.helpers.db_filter import db_eq, db_and, db_like, db_gt
+from dfxlibs.general.helpers.db_filter import db_and, db_like, db_gt
+from dfxlibs.cli.arguments import register_argument
+
+if TYPE_CHECKING:
+    from dfxlibs.cli.environment import Environment
 
 
 _logger = logging.getLogger(__name__)
@@ -45,21 +50,25 @@ def insert_prefetch_files(sqlite_pf_cur: sqlite3.Cursor, sqlite_execute_cur: sql
     return result
 
 
-def prepare_prefetch(image: Image, meta_folder: str, part: str = None) -> None:
+@register_argument('-ppf', '--prepare_prefetch', action='store_true', help='reading prefetch files and stores the '
+                                                                           'entries in a sqlite database in the '
+                                                                           'meta_folder. You can specify a partition '
+                                                                           'with --part.', group_id='prepare')
+def prepare_prefetch(env: 'Environment') -> None:
     """
     read windows prefetch files in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only the prefetch files of this partition are scanned
 
-    :param image: image file
-    :type image: Image
-    :param meta_folder: name of the meta information folder to store/read file database
-    :type meta_folder: str
-    :param part: partition name in the format "X_Y"
-    :type part: str
+    :param env: cli environment
+    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     :raise IOError: if image is not scanned for files
     """
+    image = env['image']
+    part = env['args'].part
+    meta_folder = env['meta_folder']
+
     if image is None:
         raise AttributeError('ERROR: No image file specified (--image)')
 
@@ -93,21 +102,25 @@ def prepare_prefetch(image: Image, meta_folder: str, part: str = None) -> None:
         sqlite_execute_con.commit()
 
 
-def carve_prefetch(image: Image, meta_folder: str, part: str = None) -> None:
+@register_argument('-cpf', '--carve_prefetch', action='store_true', help='carve for prefetch files and stores them in '
+                                                                         'the same database as for the '
+                                                                         '--prepare_prefetch argument',
+                   group_id='carve')
+def carve_prefetch(env: 'Environment') -> None:
     """
     carve for windows prefetch files in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only the prefetch files of this partition are scanned
 
-    :param image: image file
-    :type image: Image
-    :param meta_folder: name of the meta information folder to store/read file database
-    :type meta_folder: str
-    :param part: partition name in the format "X_Y"
-    :type part: str
+    :param env: cli environment
+    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     :raise IOError: if image is not scanned for files
     """
+    image = env['image']
+    part = env['args'].part
+    meta_folder = env['meta_folder']
+
     if image is None:
         raise AttributeError('ERROR: No image file specified (--image)')
 

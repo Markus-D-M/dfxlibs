@@ -48,7 +48,12 @@ class Arguments:
 
     def execute_arguments(self, env: Environment):
         args = vars(env['args'])
-        print(args)
+        for arg in args:
+            if args[arg]:
+                for group_id in self.group_order:
+                    for action in self.groups[group_id]['actions']:
+                        if '--' + arg in action['args'] and 'func' in action['kwargs']:
+                            action['kwargs']['func'](env)
 
 
 

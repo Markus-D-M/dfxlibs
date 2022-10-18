@@ -20,7 +20,7 @@
 
 import logging
 
-from typing import List
+from typing import List, TYPE_CHECKING
 
 from dfxlibs.general.image import Image
 from dfxlibs.general.baseclasses.file import File
@@ -28,26 +28,33 @@ from dfxlibs.general.helpers.db_filter import db_like
 from dfxlibs.windows.events.evtxfile import EvtxFile, evtx_carver
 from dfxlibs.windows.events.event import Event
 from dfxlibs.general.helpers.db_filter import db_eq, db_or, db_and, db_in, db_gt
+from dfxlibs.cli.arguments import register_argument
 
+if TYPE_CHECKING:
+    from dfxlibs.cli.environment import Environment
 
 _logger = logging.getLogger(__name__)
 
 
-def prepare_evtx(image: Image, meta_folder: str, part: str = None) -> None:
+@register_argument('-pevtx', '--prepare_evtx', action='store_true', help='read all windows evtx logs in a given Image '
+                                                                         'and stores them in a sqlite database in the '
+                                                                         'meta_folder.  You can specify a partition '
+                                                                         'with --part. ', group_id='prepare')
+def prepare_evtx(env: 'Environment') -> None:
     """
     read all windows evtx logs in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only the files and directories of this partition are scanned
 
-    :param image: image file
-    :type image: Image
-    :param meta_folder: name of the meta information folder to store/read file database
-    :type meta_folder: str
-    :param part: partition name in the format "X_Y"
-    :type part: str
+    :param env: cli environment
+    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     :raise IOError: if image is not scanned for files
     """
+    image = env['image']
+    part = env['args'].part
+    meta_folder = env['meta_folder']
+
     if image is None:
         raise AttributeError('ERROR: No image file specified (--image)')
 
@@ -86,20 +93,23 @@ def prepare_evtx(image: Image, meta_folder: str, part: str = None) -> None:
                      f'partition {partition.table_num}_{partition.slot_num}')
 
 
-def carve_evtx(image: Image, meta_folder: str, part: str = None) -> None:
+@register_argument('-cevtx', '--carve_evtx', action='store_true', help='carve for windows evtx entries and stores them '
+                                                                       'in the same database as for the --prepare_evtx '
+                                                                       'argument', group_id='carve')
+def carve_evtx(env: 'Environment') -> None:
     """
     carve all windows evtx logs in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only the data of this partition is scanned
 
-    :param image: image file
-    :type image: Image
-    :param meta_folder: name of the meta information folder to store/read file database
-    :type meta_folder: str
-    :param part: partition name in the format "X_Y"
-    :type part: str
+    :param env: cli environment
+    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     """
+    image = env['image']
+    part = env['args'].part
+    meta_folder = env['meta_folder']
+
     if image is None:
         raise AttributeError('ERROR: No image file specified (--image)')
 
