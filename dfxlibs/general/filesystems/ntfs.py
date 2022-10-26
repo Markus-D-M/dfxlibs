@@ -28,6 +28,19 @@ if TYPE_CHECKING:
     from dfxlibs.general.baseclasses.file import File
 
 
+class BitlockerVolume(pytsk3.Img_Info):
+    def __init__(self, source):
+        self._source = source
+        super().__init__()
+
+    def read(self, offset, size):
+        self._source.seek(offset)
+        return self._source.read(size)
+
+    def get_size(self):
+        return self._source.get_size()
+
+
 class VSSStore(pytsk3.Img_Info):
     def __init__(self, store):
         self._store = store

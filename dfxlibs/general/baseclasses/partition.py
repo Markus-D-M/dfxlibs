@@ -21,10 +21,11 @@ import pytsk3
 import re
 import os
 import pyvshadow
+import pybde
 from typing import TYPE_CHECKING, Optional, Iterator, Tuple, Dict, Callable
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.general.baseclasses.defaultclass import DefaultClass
-from dfxlibs.general.filesystems.ntfs import VSSStore
+from dfxlibs.general.filesystems.ntfs import VSSStore, BitlockerVolume
 from dfxlibs.general.helpers import bytes_to_hr
 import logging
 from time import time
@@ -151,13 +152,64 @@ TSK_FS_TYPE = {
 }
 
 
+class PartitionWrapper:
+    def __init__(self, source: 'Image', partition_info: pytsk3.TSK_VS_PART_INFO = None):
+        self._source = source
+        self.sector_size = self._source.sector_size
+        self.sector_offset = 0
+        self.sector_size = source.sector_size
+        self.sector_count = source.size // self.sector_size
+
+        if partition_info is not None:
+            self.sector_offset = partition_info.start
+            self.sector_count = partition_info.len
+        self._last_byte_offset = (self.sector_offset + self.sector_count) * self.sector_size
+        self._read_byte_offset = 0
+
+    @property
+    def bytes_size(self) -> int:
+        return self.sector_count * self.sector_size
+
+    def read(self, size: int = None):
+        # checking partition boundaries
+        if size is None:
+            read_size = self.bytes_size - self._read_byte_offset
+        else:
+            read_size = min(size, self.bytes_size - self._read_byte_offset)
+
+        if read_size == 0:
+            return b''
+
+        offset = min(self.sector_offset * self.sector_size + self._read_byte_offset, self._last_byte_offset)
+        self._read_byte_offset += read_size
+        data = self._source.handle.read(offset, read_size)
+        return data
+
+    def seek(self, offset, whence=os.SEEK_SET):
+        if offset < 0 or offset > self.bytes_size:
+            raise IOError('offset out of bounds')
+        if whence == os.SEEK_SET:
+            self._read_byte_offset = min(offset, self.bytes_size)
+        elif whence == os.SEEK_CUR:
+            self._read_byte_offset = min(self._read_byte_offset + offset, self.bytes_size)
+        elif whence == os.SEEK_END:
+            self._read_byte_offset = max(0, self.bytes_size - offset)
+        else:
+            raise RuntimeError('unknown whence value %s' % whence)
+
+    def tell(self):
+        return self._read_byte_offset
+
+
 class Partition(DefaultClass):
     def __init__(self, source: 'Image', partition_info: pytsk3.TSK_VS_PART_INFO = None):
         self._source = source
         self._vss_volume = None
         self._vss_store_cache: Dict[int, Tuple[pyvshadow.store, pytsk3.FS_Info]] = {}
+        self._decrypted: Optional[pybde.volume] = None
         self.sector_offset = 0
-        self.sector_count = source.size // source.sector_size
+        self.sector_size = source.sector_size
+        self.sector_count = source.size // self.sector_size
         self.flags = pytsk3.TSK_VS_PART_FLAG_ALLOC
         self.descr = ''
         self.type_id = 0
@@ -169,6 +221,7 @@ class Partition(DefaultClass):
         self.last_inum = 0
         self.first_inum = 0
         self._read_byte_offset = 0
+        self._add_info = []
 
         if partition_info is not None:
             self.sector_offset = partition_info.start
@@ -179,7 +232,7 @@ class Partition(DefaultClass):
             self.tag = partition_info.tag
             self.table_num = partition_info.table_num
             self.descr = partition_info.desc.decode('utf8')
-            self._last_byte_offset = (self.sector_offset + self.sector_count) * self._source.sector_size
+            self._last_byte_offset = (self.sector_offset + self.sector_count) * self.sector_size
             if self.flags & pytsk3.TSK_VS_PART_FLAG_ALLOC:
                 try:
                     self.type_id = int(re.search(r'\(0x(.+)\)', self.descr).group(1), 16)
@@ -188,30 +241,49 @@ class Partition(DefaultClass):
                     pass
 
         if self.flags == pytsk3.TSK_VS_PART_FLAG_ALLOC:
-            self._filesystem = pytsk3.FS_Info(source.handle, offset=self.sector_offset * source.sector_size)
-            self.last_inum = self._filesystem.info.last_inum
-            self.first_inum = self._filesystem.info.first_inum
-            source.sector_size = self._filesystem.info.dev_bsize
-            self._last_byte_offset = (self.sector_offset + self.sector_count) * self._source.sector_size
-            self.type_id = self._filesystem.info.ftype
-            try:
-                self.descr = TSK_FS_TYPE[self.type_id]
-            except KeyError:
-                pass
+            self._decrypted = PartitionWrapper(source, partition_info)
+            if pybde.check_volume_signature_file_object(self):
+                self._decrypted = pybde.volume()
+                self._decrypted.open_file_object(PartitionWrapper(source, partition_info))
+                self._decrypted.unlock()
+                self._add_info.append('bitlocker')
+                try:
+                    self._filesystem = pytsk3.FS_Info(BitlockerVolume(self._decrypted))
+                except OSError:
+                    self._filesystem = None
+            else:
+                try:
+                    self._filesystem = pytsk3.FS_Info(source.handle, offset=self.sector_offset * self.sector_size)
+                except OSError:
+                    self._filesystem = None
+            if self._filesystem is not None:
+                self.last_inum = self._filesystem.info.last_inum
+                self.first_inum = self._filesystem.info.first_inum
+                self.sector_size = self._filesystem.info.dev_bsize
+                self._last_byte_offset = (self.sector_offset + self.sector_count) * self.sector_size
+                self.type_id = self._filesystem.info.ftype
+                try:
+                    self.descr = TSK_FS_TYPE[self.type_id]
+                except KeyError:
+                    pass
         else:
             self._filesystem = None
 
     @property
+    def is_crypted(self) -> bool:
+        return 'bitlocker' in self._add_info
+
+    @property
     def part_name(self) -> str:
-        return f'{self.table_num}_{self.slot_num}'
+        return f'{self.slot_num}'
 
     @property
     def bytes_offset(self) -> int:
-        return self.sector_offset * self._source.sector_size
+        return self.sector_offset * self.sector_size
 
     @property
     def bytes_size(self) -> int:
-        return self.sector_count * self._source.sector_size
+        return self.sector_count * self.sector_size
 
     @property
     def filesystem(self) -> pytsk3.FS_Info:
@@ -241,7 +313,9 @@ class Partition(DefaultClass):
 
             while current_data_len - current_offset > 0xffffff:
                 if last_print + 2 < time():
-                    print(f'\r{bytes_to_hr(data_count * chunk_size)}/{element_count} potential findings...', end='')
+                    print(f'\r{bytes_to_hr(data_count * chunk_size)} '
+                          f'({data_count*chunk_size/self.bytes_size*100:.2f}%)/'
+                          f'{element_count} potential findings...', end='')
                     last_print = time()
                 for element in carve_func(current_data, current_offset):
                     if type(element) is int:
@@ -292,43 +366,21 @@ class Partition(DefaultClass):
         return filesystem
 
     def read(self, size: int = None):
-        # checking partition boundaries
-        if size is None:
-            read_size = self.bytes_size - self._read_byte_offset
-        else:
-            read_size = min(size, self.bytes_size - self._read_byte_offset)
-
-        if read_size == 0:
-            return b''
-
-        offset = min(self.sector_offset * self._source.sector_size + self._read_byte_offset, self._last_byte_offset)
-        self._read_byte_offset += read_size
-        return self._source.handle.read(offset, read_size)
+        # special case:
+        # for decrypted and dumped bitlocker ntfs partitions there seems to be no backup volume header. Without it,
+        # there is no possibility to parse shadow copies with the used lib. so if there is an attempt on a ntfs volume
+        # to read the 512 bytes after the partition size in a single partition image, this function returns a copy of
+        # the first sector
+        if self.tell() == self.bytes_size and self._source.vstype == 'single partition' and size == 512 and \
+                self.type_id == pytsk3.TSK_FS_TYPE_NTFS:
+            return self._source.handle.read(self.sector_offset * self.sector_size, size)
+        return self._decrypted.read(size)
 
     def seek(self, offset, whence=os.SEEK_SET):
-        if offset < 0 or offset > self.bytes_size:
-            raise IOError('offset out of bounds')
-        if whence == os.SEEK_SET:
-            self._read_byte_offset = min(offset, self.bytes_size)
-        elif whence == os.SEEK_CUR:
-            self._read_byte_offset = min(self._read_byte_offset + offset, self.bytes_size)
-        elif whence == os.SEEK_END:
-            self._read_byte_offset = max(0, self.bytes_size - offset)
-        else:
-            raise RuntimeError('unknown whence value %s' % whence)
+        self._decrypted.seek(offset, whence)
 
     def tell(self):
-        return self._read_byte_offset
-
-    def read_buffer(self, size: int, partition_byte_offset: int) -> bytes:
-        # checking partition boundaries
-        last_byte = (self.sector_offset + self.sector_count) * self._source.sector_size
-        offset = min(self.sector_offset * self._source.sector_size + partition_byte_offset, last_byte)
-        size = min(size, last_byte - offset)
-
-        if size == 0:
-            return b''
-        return self._source.handle.read(offset, size)
+        return self._decrypted.tell()
 
     def get_file(self, path: str = None, meta_addr: int = None) -> File:
         if self.filesystem is None:

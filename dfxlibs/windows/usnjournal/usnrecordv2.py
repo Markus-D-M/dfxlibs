@@ -184,7 +184,7 @@ class USNRecordV2(DatabaseObject, DefaultClass):
         if fn_offset + fn_len > len(raw):
             raise AttributeError('Invalid filename length')
         try:
-            fname = raw[fn_offset: fn_offset + fn_len].decode('utf-16be')
+            fname = raw[fn_offset: fn_offset + fn_len].decode('utf-16')
         except UnicodeDecodeError:
             raise AttributeError('Invalid filename')
         if '\0' in fname:

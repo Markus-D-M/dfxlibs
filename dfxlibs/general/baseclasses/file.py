@@ -230,7 +230,7 @@ class File(DatabaseObject, DefaultClass):
                 try:
                     data += self._tsk3_file.read_random(self._offset+read, read_now, attr_type, attr_id)
                 except OSError:
-                    _logger.warning(f'Error while reading {self.full_name}: '
+                    _logger.warning(f'Error while reading {self.source}:{self.full_name}: '
                                     f'Can only extract {read} of {to_read} bytes')
                     to_read = read
                     break
@@ -271,4 +271,4 @@ class File(DatabaseObject, DefaultClass):
 
     @staticmethod
     def db_primary_key() -> List[str]:
-        return ['meta_addr', 'name', 'parent_folder', 'size', 'crtime', 'mtime', 'atime', 'ctime']
+        return ['meta_addr', 'name', 'parent_folder', 'size', 'crtime', 'mtime', 'ctime']

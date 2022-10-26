@@ -96,6 +96,10 @@ def prepare_files(env: 'Environment') -> None:
     _logger.info('start preparing files')
     # specified partitions only (if specified)
     for partition in image.partitions(part_name=part):
+        try:
+            _ = partition.filesystem
+        except AttributeError:
+            continue
         _logger.info(f'prepare partition {partition.part_name}')
 
         # prepare database
@@ -113,7 +117,7 @@ def prepare_files(env: 'Environment') -> None:
         print(f'\r{" "*60}\r', end='')  # delete progress line
         sqlite_con.commit()
         _logger.info(f'{count_insert} entries inserted; {count_skip} entries skipped')
-        _logger.info(f'partition {partition.table_num}_{partition.slot_num} finished')
+        _logger.info(f'partition {partition.part_name} finished')
 
     _logger.info('prepare files finished')
 
@@ -152,7 +156,8 @@ def prepare_vss_files(env: 'Environment') -> None:
         count_insert = 0
         count_skip = 0
         for vss_store_id, vss_store, filesystem in partition.get_volume_shadow_copy_filesystems():
-            _logger.info(f'found vss store {vss_store.identifier}')
+            _logger.info(f'found vss store {vss_store.identifier} '
+                         f'(Created: {vss_store.creation_time.strftime("%Y-%m-%d")})')
             root = File(filesystem.open('/'), partition)
             root.name = '/'
             root.source = f'vss#{vss_store_id}'
@@ -168,7 +173,7 @@ def prepare_vss_files(env: 'Environment') -> None:
             sqlite_con.commit()
 
         _logger.info(f'{count_insert} entries inserted; {count_skip} entries skipped')
-        _logger.info(f'partition {partition.table_num}_{partition.slot_num} finished')
+        _logger.info(f'partition {partition.part_name} finished')
 
     _logger.info('scanning for volume shadow copies finished')
 
@@ -264,7 +269,7 @@ def hash_files(env: 'Environment') -> None:
         print(f'\r{" "*60}\r', end='')  # delete progress line
         sqlite_con.commit()
         _logger.info(f'{count} files hashed')
-        _logger.info(f'partition {partition.table_num}_{partition.slot_num} finished')
+        _logger.info(f'partition {partition.part_name} finished')
 
     _logger.info('hashing files finished')
 
@@ -296,7 +301,7 @@ def file_types(env: 'Environment') -> None:
     # specified partitions only (if specified)
     for partition in image.partitions(part_name=part):
 
-        _logger.info(f'determine filetypes in partition {partition.table_num}_{partition.slot_num}')
+        _logger.info(f'determine filetypes in partition {partition.part_namem}')
 
         # open database
         try:
@@ -332,7 +337,7 @@ def file_types(env: 'Environment') -> None:
         print(f'\r{" "*60}\r', end='')  # delete progress line
         sqlite_con.commit()
         _logger.info(f'{count} files analyzed')
-        _logger.info(f'partition {partition.table_num}_{partition.slot_num} finished')
+        _logger.info(f'partition {partition.part_name} finished')
 
     _logger.info('filetype detection finished')
 

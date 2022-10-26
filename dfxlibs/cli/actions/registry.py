@@ -20,11 +20,11 @@
 import logging
 import sqlite3
 from Registry import Registry, RegistryParse
+from Registry.Registry import RegistryValue
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from dfxlibs.windows.registry.registryentry import RegistryEntry
-from dfxlibs.general.image import Image
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.general.helpers.db_filter import db_and, db_like, db_eq
 from dfxlibs.cli.arguments import register_argument
@@ -73,14 +73,18 @@ def recursive_registry(key, db_cur: sqlite3.Cursor = None, mount_point: str = No
 
     # values
     timestamp = datetime.fromtimestamp(0, tz=timezone.utc)
+    value: RegistryValue
     for value in key.values():
-        if value.name() == '(default)':
+        try:
+            name = value.name()
+        except UnicodeDecodeError:
+            name = '(decode error)'
+        if name == '(default)':
             continue
         rtype = value.value_type_str()
-        name = value.name()
         try:
             content = value.value()
-        except RegistryParse.UnknownTypeException:
+        except (RegistryParse.UnknownTypeException, UnicodeDecodeError):
             content = value.raw_data()
         if type(content) is bytes:
             content = content.hex()
@@ -159,7 +163,8 @@ def prepare_registry(env: 'Environment') -> None:
             hive_file = File.db_select_one(sqlite_files_cur, db_and(
                                                                     db_like('name', hive['filename']),
                                                                     db_like('parent_folder', hive['filepath']),
-                                                                    db_eq('allocated', 1)
+                                                                    db_eq('allocated', 1),
+                                                                    db_eq('source', 'filesystem')
                                                                    )
                                            )
             if not hive_file:
@@ -185,7 +190,8 @@ def prepare_registry(env: 'Environment') -> None:
                 hive_file = File.db_select_one(sqlite_files_cur, db_and(
                         db_eq('name', hive['filename']),
                         db_eq('parent_folder', hive['filepath']),
-                        db_eq('allocated', 1)
+                        db_eq('allocated', 1),
+                        db_eq('source', 'filesystem')
                     ))
                 if not hive_file:
                     _logger.warning(f'profile hive {hive["filename"]} in profile {profile_folder} not found')

@@ -16,7 +16,7 @@
 """
 
 import logging
-from struct import unpack
+from io import BytesIO
 from typing import Iterator, Union
 from Evtx.Evtx import ChunkHeader
 import dfxlibs
@@ -25,9 +25,14 @@ from lxml.etree import XMLSyntaxError
 from .xml_to_dict import xml_to_dict
 from .event import Event
 from Evtx.BinaryParser import OverrunBufferException, ParseException
+import pyevtx
+import re
+
+RE_REMOVE_NAMESPACES = re.compile(r'([< /])[a-zA-Z]+:')
 
 _logger = logging.getLogger(__name__)
 
+logging.getLogger("Evtx").setLevel(logging.ERROR)
 
 EVTX_CARVER_OFFSET_STEP = 512
 
@@ -68,6 +73,11 @@ def evtx_carver(current_data: bytes, current_offset: int) -> Iterator[Union[int,
                 XMLSyntaxError, AttributeError, IndexError, RecursionError):
             # Parse errors for partial destroyed chunks -> ignore records
             continue
+        # remove namespaces
+        for element in evt_tree.xpath("descendant-or-self::*[namespace-uri()!='']"):
+            element.tag = etree.QName(element).localname
+        etree.cleanup_namespaces(evt_tree)
+
         try:
             event = xml_to_dict(evt_tree)
             event['carved'] = True
@@ -75,13 +85,22 @@ def evtx_carver(current_data: bytes, current_offset: int) -> Iterator[Union[int,
             continue
         yield Event(**event)
     yield current_offset + EVTX_CARVER_OFFSET_STEP
-    return
 
 
 class EvtxFile:
     def __init__(self, file: dfxlibs.general.baseclasses.file.File):
         self._file = file
-        if self._file.size < 4096:
+        try:
+            if not pyevtx.check_file_signature_file_object(file):
+                raise IOError('Not a windows event file')
+        except IOError:
+            raise IOError('Not a windows event file')
+        try:
+            self._evtx: pyevtx.file = pyevtx.open_file_object(file)
+        except IOError:
+            raise IOError('Not a windows event file')
+
+        """        if self._file.size < 4096:
             _logger.error('file to small')
             raise IOError()
         self._file.seek(0)
@@ -101,20 +120,44 @@ class EvtxFile:
                 yield ChunkHeader(raw_chunk, 0)
             except IOError:
                 pass
-            raw_chunk = self._file.read(0x10000)
+            raw_chunk = self._file.read(0x10000)"""
 
     @property
     def records(self) -> Iterator[Event]:
-        for chunk in self.chunks:
+        record: pyevtx.record
+        for record in self._evtx.records:
+            try:
+                # ignore XML parsing errors while reading
+                parser = etree.XMLParser(recover=True)
+                evt_tree = etree.parse(BytesIO(record.xml_string.encode('utf-8')), parser)
+
+                # remove namespaces
+                for element in evt_tree.xpath("descendant-or-self::*[namespace-uri()!='']"):
+                    element.tag = etree.QName(element).localname
+                etree.cleanup_namespaces(evt_tree)
+
+                event = xml_to_dict(evt_tree)
+            except:
+                print (record.xml_string)
+                print(etree.tostring(evt_tree))
+                raise
+            event['carved'] = False
+            yield Event(**event)
+
+        """for chunk in self.chunks:
             for record in chunk.records():
                 try:
                     evt_tree: etree = record.lxml()
-                except (OverrunBufferException, XMLSyntaxError, KeyError, UnicodeDecodeError):
+                except (OverrunBufferException, UnicodeDecodeError, KeyError, ParseException, XMLSyntaxError,
+                        AttributeError, IndexError, RecursionError):
+                    raise
                     _logger.warning(f'{self._file.name}: error while processing events')
                     continue
                 try:
                     event = xml_to_dict(evt_tree)
                     event['carved'] = False
                 except ValueError:
+                    _logger.warning(f'{self._file.name}: error while processing events')
                     continue
                 yield Event(**event)
+        """

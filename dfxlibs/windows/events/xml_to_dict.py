@@ -14,9 +14,11 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 """
+import binascii
 
 from lxml import etree
 from datetime import datetime, timezone
+from dateutil import parser
 from re import findall
 from base64 import b64decode
 from typing import Union, Optional
@@ -30,7 +32,7 @@ def __safe_tag_read(tree: etree, tag_name: str, result_type: type = str,
             return result_type(tree.find(tag_name, namespaces=namespaces).text)
         else:
             return result_type(tree.find(tag_name, namespaces=namespaces).attrib[attrib])
-    except (AttributeError, TypeError):
+    except (AttributeError, TypeError, KeyError):
         if result_type is str:
             return ''
         elif result_type is int:
@@ -38,7 +40,8 @@ def __safe_tag_read(tree: etree, tag_name: str, result_type: type = str,
 
 
 def xml_to_dict(evt_tree) -> dict:
-    namespace = evt_tree.nsmap
+    #namespace = evt_tree.nsmap
+    namespace = None
     event = {}
     system_tag = evt_tree.find('System', namespaces=namespace)
     event['event_id'] = __safe_tag_read(system_tag, 'EventID', result_type=int, namespaces=namespace)
@@ -53,7 +56,11 @@ def xml_to_dict(evt_tree) -> dict:
     if event_tag is None:
         event_tag = evt_tree.find('UserData', namespaces=namespace)
         if event_tag is not None:
-            event_tag = event_tag.getchildren()[0]
+            try:
+                event_tag = event_tag.getchildren()[0]
+            except IndexError:
+                print(event_tag)
+                pass
     try:
         event['timestamp'] = datetime.strptime(__safe_tag_read(system_tag, 'TimeCreated',
                                                                attrib='SystemTime', namespaces=namespace),
@@ -64,7 +71,11 @@ def xml_to_dict(evt_tree) -> dict:
                                                                    attrib='SystemTime', namespaces=namespace),
                                                    '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
         except ValueError:
-            raise ValueError('No valid timestamp')
+            try:
+                event['timestamp'] = parser.parse(__safe_tag_read(system_tag, 'TimeCreated',
+                                                                  attrib='SystemTime', namespaces=namespace))
+            except ValueError:
+                raise ValueError('No valid timestamp')
 
     if event['timestamp'].year < 1970:
         raise ValueError('No valid timestamp')
@@ -77,7 +88,7 @@ def xml_to_dict(evt_tree) -> dict:
                 event['data'][data.attrib['Name']] = data.text
             except KeyError:
                 if data.text is not None:
-                    _, data_tag = data.tag.split('}', 1)
+                    data_tag = data.tag
                     if data_tag == 'Data':
                         finds = findall('<.+?>(.*?)</.+?>', data.text, re.DOTALL)
                         if finds:
@@ -85,7 +96,10 @@ def xml_to_dict(evt_tree) -> dict:
                         else:
                             data_list.append(data.text)
                     elif data_tag == 'Binary':
-                        data_list.append(b64decode(data.text).hex())
+                        try:
+                            data_list.append(b64decode(data.text).hex())
+                        except binascii.Error:
+                            data_list.append(data.text)
                     else:
                         event['data'][data_tag] = data.text
         event['data'].update({k: v for k, v in enumerate(data_list)})

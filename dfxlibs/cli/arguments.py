@@ -18,6 +18,7 @@
 import argparse
 
 from dfxlibs.cli.environment import Environment
+from dfxlibs import __version__
 
 
 class Arguments:
@@ -37,7 +38,7 @@ class Arguments:
         self.groups[group_id]['actions'].append({'args': args, 'kwargs': kwargs})
 
     def get_argument_parser(self) -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser(description='dfxlibs: A python digital forensics toolkit')
+        parser = argparse.ArgumentParser(description=f'dfxlibs: A python digital forensics toolkit (version {__version__})')
         for group_id in self.group_order:
             group = parser.add_argument_group(title=self.groups[group_id]['title'],
                                               description=self.groups[group_id]['description'])
@@ -54,7 +55,6 @@ class Arguments:
                     for action in self.groups[group_id]['actions']:
                         if '--' + arg in action['args'] and 'func' in action['kwargs']:
                             action['kwargs']['func'](env)
-
 
 
 arguments = Arguments()

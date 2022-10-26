@@ -78,19 +78,22 @@ def prepare_evtx(env: 'Environment') -> None:
             try:
                 evtx_file = EvtxFile(file)
             except IOError as e:
-                _logger.warning(f'{file.name}: {e}')
+                _logger.warning(f'{file.source}:{file.name}: {e}')
                 continue
-            _logger.info(f'reading file {file.name}')
+            _logger.info(f'reading file {file.source}:{file.name}')
             file_count += 1
             file_record_count = 0
+            file_skip_count = 0
             for event in evtx_file.records:
                 if event.db_insert(sqlite_events_cur):
                     record_count += 1
                     file_record_count += 1
-            _logger.info(f'{file_record_count} event records added')
+                else:
+                    file_skip_count += 1
+            _logger.info(f'{file_record_count} event records added ({file_skip_count} skipped)')
         sqlite_events_con.commit()
         _logger.info(f'{record_count} event records from {file_count} files added for '
-                     f'partition {partition.table_num}_{partition.slot_num}')
+                     f'partition {partition.part_name}')
 
 
 @register_argument('-cevtx', '--carve_evtx', action='store_true', help='carve for windows evtx entries and stores them '
@@ -128,7 +131,7 @@ def carve_evtx(env: 'Environment') -> None:
 
         sqlite_events_con.commit()
         _logger.info(f'{record_count} event records carved for '
-                     f'partition {partition.table_num}_{partition.slot_num}')
+                     f'partition {partition.part_name}')
 
 
 def get_user_sessions(image: Image, meta_folder: str, part: str = None) -> List:

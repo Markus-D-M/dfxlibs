@@ -52,8 +52,10 @@ def list_partitions(env: 'Environment') -> None:
     print(f'Sector size: {image.sector_size} bytes')
     print(f'Partition table type: {image.vstype}')
     print('')
-    print(f'{"Partition":10} {"Start":>10} {"End":>10} {"Sectors":>10} {"Size":>10}  {"Id":>4}  Description')
+    print(f'{"Partition":10} {"Start":>10} {"End":>10} {"Sectors":>10} {"Size":>10}  {"Id":>4} {"Crypt":>5} '
+          f'Description')
     for partition in image.partitions():
-        print(f'{str(partition.table_num) + "_" + str(partition.slot_num):<10} {partition.sector_offset:10} '
+        print(f'{partition.part_name:<10} {partition.sector_offset:10} '
               f'{partition.sector_offset+partition.sector_count:10} {partition.sector_count:10} '
-              f'{bytes_to_hr(partition.bytes_size):>10}  0x{partition.type_id:02x}  {partition.descr}')
+              f'{bytes_to_hr(partition.bytes_size):>10}  0x{partition.type_id:02x} '
+              f'{("Y" if partition.is_crypted else "N"):>5} {partition.descr}')

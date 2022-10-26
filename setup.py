@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='dfxlibs',
-    version='0.0.1',
+    version='0.0.2',
     packages=['dfxlibs'],
     url='https://github.com',
     license='Apache 2.0',
@@ -27,6 +27,8 @@ setup(
         "python-magic",
         "python-magic-bin;platform_system=='Windows'",
         "libvshadow-python",
-        "libscca-python"
+        "libscca-python",
+        "libbde-python",
+        "libevtx-python"
     ]
 )

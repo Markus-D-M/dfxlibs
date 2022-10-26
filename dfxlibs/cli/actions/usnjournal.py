@@ -80,6 +80,30 @@ def prepare_usnjournal(env: 'Environment') -> None:
             continue
         journal.open(partition)
 
+        # find first usn entry
+        # step 1: jump to the middle of the file and check for data, repeat for halfs to get starting area
+        offset = journal.size // 2
+        chunksize = 0
+        for i in range(20):
+            chunksize = journal.size // (2 ** (i + 1))
+            journal.seek(offset)
+            data = journal.read(1024).lstrip(b'\0')
+            if data:
+                offset = offset - (chunksize // 2)
+            else:
+                offset = offset + (chunksize // 2)
+
+        # step 2: fine search for beginning of usn records
+        if offset > chunksize:
+            journal.seek(offset - chunksize)
+        else:
+            journal.seek(0)
+        while True:
+            data = journal.read(65536).lstrip(b'\0')
+            if data:
+                journal.seek(journal.tell() - len(data))
+                break
+
         last_time = time.time()  # for showing progress
         parent_folders = {}  # cache parent_folder searches
         record_count = 0
@@ -123,7 +147,6 @@ def prepare_usnjournal(env: 'Environment') -> None:
                         parent_folders[parent_addr_seq] = ''
                 if usnrecord.db_insert(sqlite_usn_cur):
                     record_count += 1
-
             if time.time() > last_time + 5:
                 # update progress
                 print(f'\r{record_count} records found...', end='')

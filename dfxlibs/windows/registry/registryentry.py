@@ -30,7 +30,10 @@ class RegistryEntry(DatabaseObject, DefaultClass):
         if type(value) is bytes:
             value = value.hex()
         elif type(value) is datetime:
-            value = value.timestamp()
+            try:
+                value = value.timestamp()
+            except OSError:
+                value = 0
         return dumps(value)
 
     @staticmethod
