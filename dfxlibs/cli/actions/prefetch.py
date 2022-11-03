@@ -17,17 +17,13 @@
 import datetime
 import logging
 import sqlite3
-from typing import TYPE_CHECKING
 
-from dfxlibs.general.image import Image
+from dfxlibs.cli.environment import env
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.windows.prefetch.prefetchfile import PrefetchFile, prefetch_carver
 from dfxlibs.windows.prefetch.executes import Executes
 from dfxlibs.general.helpers.db_filter import db_and, db_like, db_gt
 from dfxlibs.cli.arguments import register_argument
-
-if TYPE_CHECKING:
-    from dfxlibs.cli.environment import Environment
 
 
 _logger = logging.getLogger(__name__)
@@ -54,13 +50,11 @@ def insert_prefetch_files(sqlite_pf_cur: sqlite3.Cursor, sqlite_execute_cur: sql
                                                                            'entries in a sqlite database in the '
                                                                            'meta_folder. You can specify a partition '
                                                                            'with --part.', group_id='prepare')
-def prepare_prefetch(env: 'Environment') -> None:
+def prepare_prefetch() -> None:
     """
     read windows prefetch files in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only the prefetch files of this partition are scanned
 
-    :param env: cli environment
-    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     :raise IOError: if image is not scanned for files
@@ -72,10 +66,10 @@ def prepare_prefetch(env: 'Environment') -> None:
     if image is None:
         raise AttributeError('ERROR: No image file specified (--image)')
 
-    _logger.info('start preparing usn journal')
+    _logger.info('start preparing prefetch files')
 
     # specified partitions only (if specified)
-    for partition in image.partitions(part_name=part):
+    for partition in image.partitions(part_name=part, only_with_filesystem=True):
         _logger.info(f'preparing prefetch files in partition {partition.part_name}')
 
         try:
@@ -92,9 +86,9 @@ def prepare_prefetch(env: 'Environment') -> None:
             try:
                 pf = PrefetchFile(prefetch_file=file)
             except OSError:
-                _logger.warning(f'Invalid prefetch file: {file.name}')
+                _logger.warning(f'Invalid prefetch file: {file.source}:{file.name}')
                 continue
-            _logger.info(f'reading file {file.name}')
+            _logger.info(f'reading file {file.source}:{file.name}')
             count += insert_prefetch_files(sqlite_pf_cur, sqlite_execute_cur, pf)
 
         _logger.info(f'{count} prefetch files prepared')
@@ -106,13 +100,11 @@ def prepare_prefetch(env: 'Environment') -> None:
                                                                          'the same database as for the '
                                                                          '--prepare_prefetch argument',
                    group_id='carve')
-def carve_prefetch(env: 'Environment') -> None:
+def carve_prefetch() -> None:
     """
     carve for windows prefetch files in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only the prefetch files of this partition are scanned
 
-    :param env: cli environment
-    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     :raise IOError: if image is not scanned for files

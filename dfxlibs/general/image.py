@@ -71,21 +71,43 @@ class Image:
         except OSError:
             self.vstype = 'single partition'
 
-    def partitions(self, part_flag=pytsk3.TSK_VS_PART_FLAG_ALLOC, part_name: str = None) -> List[Partition]:
+    def partitions(self, part_flag=pytsk3.TSK_VS_PART_FLAG_ALLOC, part_name: str = None,
+                   only_with_filesystem: bool = False, filesystem_typeid: int = None) -> List[Partition]:
         """
-        shows partitions in an image
+        returns partitions in an image
 
         :param part_flag: sleuthkit TSK_VS_PART_FLAG_ENUM, which partition types should be returned
         :type part_flag: int
         :param part_name: only return the partition with given name
         :type part_name: str
-        :return: partitions in the loaded source
+        :param only_with_filesystem: only return partitions with a known filesystem
+        :type only_with_filesystem: bool
+        :param filesystem_typeid: only return partitions with a given filesystem typeid
+        :type filesystem_typeid: int
+        :return: partitions in the loaded source which matches the filter criteria - for single partition images the
+                 contained partition is always returned
         :rtype: List[Partition]
         """
         if self._vol_info:
-            return [a for a in [Partition(self, p) for p in self._vol_info]
-                    if a.flags & part_flag and
-                    (part_name is None or a.part_name == part_name)]
+            result = []
+            for p in self._vol_info:
+                partition = Partition(self, p)
+                if not partition.flags & part_flag:
+                    continue
+                if part_name is not None and partition.part_name != part_name:
+                    continue
+                if only_with_filesystem:
+                    try:
+                        _ = partition.filesystem
+                    except AttributeError:
+                        continue
+                if filesystem_typeid is not None and partition.type_id != filesystem_typeid:
+                    continue
+                result.append(partition)
+            return result
+            #return [a for a in [Partition(self, p) for p in self._vol_info]
+            #        if a.flags & part_flag and
+            #        (part_name is None or a.part_name == part_name)]
         else:
             return [Partition(self)]
 

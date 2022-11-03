@@ -89,7 +89,7 @@ def evtx_carver(current_data: bytes, current_offset: int) -> Iterator[Union[int,
 
 class EvtxFile:
     def __init__(self, file: dfxlibs.general.baseclasses.file.File):
-        self._file = file
+        self._file: dfxlibs.general.baseclasses.file.File = file
         try:
             if not pyevtx.check_file_signature_file_object(file):
                 raise IOError('Not a windows event file')
@@ -129,7 +129,12 @@ class EvtxFile:
             try:
                 # ignore XML parsing errors while reading
                 parser = etree.XMLParser(recover=True)
-                evt_tree = etree.parse(BytesIO(record.xml_string.encode('utf-8')), parser)
+                try:
+                    evt_tree = etree.parse(BytesIO(record.xml_string.encode('utf-8')), parser)
+                except OSError:
+                    _logger.warning(f'{self._file.source}:{self._file.name}: '
+                                    f'Error while parsing XML string -> skip entry')
+                    continue
 
                 # remove namespaces
                 for element in evt_tree.xpath("descendant-or-self::*[namespace-uri()!='']"):

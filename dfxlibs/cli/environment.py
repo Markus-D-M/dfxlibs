@@ -27,3 +27,6 @@ class Environment(TypedDict):
     meta_folder: str
     config: Dict
     image: Optional[dfxlibs.general.image.Image]
+
+
+env: Environment = Environment(args=argparse.Namespace(), meta_folder='', config={}, image=None)

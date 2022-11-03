@@ -122,7 +122,10 @@ class PrefetchFile(DatabaseObject, DefaultClass):
             metric: pyscca.file_metrics
             for metric in self._scca_file.file_metrics_entries:
                 tmp.append({'filename': metric.filename, 'file_ref': metric.file_reference})
-                fullname = metric.filename.split('\\', 2)[2]
+                try:
+                    fullname = metric.filename.split('\\', 2)[2]
+                except IndexError:
+                    raise OSError('Invalid executable filename')
                 try:
                     parent_folder, exe_name = fullname.rsplit('\\', 1)
                     parent_folder = '/' + parent_folder.replace('\\', '/')

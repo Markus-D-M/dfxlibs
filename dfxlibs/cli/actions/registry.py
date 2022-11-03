@@ -22,15 +22,13 @@ import sqlite3
 from Registry import Registry, RegistryParse
 from Registry.Registry import RegistryValue
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
 
+from dfxlibs.cli.environment import env
 from dfxlibs.windows.registry.registryentry import RegistryEntry
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.general.helpers.db_filter import db_and, db_like, db_eq
 from dfxlibs.cli.arguments import register_argument
 
-if TYPE_CHECKING:
-    from dfxlibs.cli.environment import Environment
 
 _logger = logging.getLogger(__name__)
 
@@ -115,13 +113,11 @@ def recursive_registry(key, db_cur: sqlite3.Cursor = None, mount_point: str = No
                                                                        'sqlite database in the meta_folder. You can '
                                                                        'specify a partition with --part.',
                    group_id='prepare')
-def prepare_registry(env: 'Environment') -> None:
+def prepare_registry() -> None:
     """
     scans the windows registry in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only the files and directories of this partition are scanned
 
-    :param env: cli environment
-    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     """
@@ -134,7 +130,7 @@ def prepare_registry(env: 'Environment') -> None:
 
     _logger.info('start preparing registry')
     # specified partitions only (if specified)
-    for partition in image.partitions(part_name=part):
+    for partition in image.partitions(part_name=part, only_with_filesystem=True):
 
         sqlite_registry_con, sqlite_registry_ro, sqlite_registry_rw = RegistryEntry.db_open(meta_folder,
                                                                                             partition.part_name,

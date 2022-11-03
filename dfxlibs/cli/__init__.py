@@ -59,36 +59,34 @@ def change_log_handler(filename: str = None):
         root_logger.addHandler(file_log_handler)
 
 
-def get_image_files(env: Dict) -> List[str]:
+def get_image_files() -> List[str]:
     """
     Get list of image files.
     Sources are metafolder config or commandline params.
     If image files are given via commandline parameters, the result is stored at the metafolder config.
 
-    :param env: cli environment
-    :type env: dict
     :return: List of image files
     :rtype: list
     """
-    args: argparse.Namespace = env['args']
+    args: argparse.Namespace = environment.env['args']
     if args.image is None:
         try:
-            image_files = env['config']['image_files']
+            image_files = environment.env['config']['image_files']
         except KeyError:
             image_files = []
         return image_files
     elif len(args.image) == 1 and '*' in args.image[0]:
         image_files = [f for f in glob.glob(args.image[0]) if f[-4:].lower() not in ['.txt', '.pdf', 'html', '.xml']]
-        env['config']['image_files'] = image_files
+        environment.env['config']['image_files'] = image_files
     else:
         image_files = args.image
-        env['config']['image_files'] = image_files
-    with open(join(env['meta_folder'], 'config.json'), 'w') as f:
-        f.write(dumps(env['config']))
+        environment.env['config']['image_files'] = image_files
+    with open(join(environment.env['meta_folder'], 'config.json'), 'w') as f:
+        f.write(dumps(environment.env['config']))
     return image_files
 
 
-def meta_folder(env: Dict):
+def meta_folder():
     """
     Check existence of meta information folder.
     Create folder if needed and --meta_create flag is set.
@@ -96,11 +94,9 @@ def meta_folder(env: Dict):
     Metafolder name is stored in env['meta_folder'].
     Config from metafolder is stored in env['config'].
 
-    :param env: cli environment
-    :type env: dict
     :raise IOError: if meta_folder does not exist and --meta_create flag is not set.
     """
-    args: argparse.Namespace = env['args']
+    args: argparse.Namespace = environment.env['args']
     folder = args.meta_folder
     if not isdir(folder):
         if args.meta_create:
@@ -111,12 +107,12 @@ def meta_folder(env: Dict):
     if not isdir(join(folder, 'logs')):
         mkdir(join(folder, 'logs'))
     change_log_handler(join(folder, 'logs', f'{datetime.date.today().strftime("%Y-%m-%d")}_log.txt'))
-    env['meta_folder'] = folder
+    environment.env['meta_folder'] = folder
     try:
-        with open(join(env['meta_folder'], 'config.json'), 'r') as f:
-            env['config'] = loads(f.read())
+        with open(join(environment.env['meta_folder'], 'config.json'), 'r') as f:
+            environment.env['config'] = loads(f.read())
     except (FileNotFoundError, JSONDecodeError):
-        env['config'] = {}
+        environment.env['config'] = {}
 
 
 """def parse_arguments():
@@ -131,11 +127,10 @@ def meta_folder(env: Dict):
 
 
 def main():
-    env = environment.Environment(args=arguments.arguments.get_argument_parser().parse_args(),
-                                  meta_folder='', config={}, image=None)
+    environment.env['args'] = arguments.arguments.get_argument_parser().parse_args()
 
     try:
-        meta_folder(env)
+        meta_folder()
     except IOError as e:
         print(e)
         sys.exit(1)
@@ -143,11 +138,11 @@ def main():
     _logger.info('Running ' + ' '.join(sys.argv))
     _logger.info(f'dfxlibs version: {dfxlibs.__version__}')
 
-    if image_files := get_image_files(env):
-        env['image'] = dfxlibs.general.image.Image(image_files)
+    if image_files := get_image_files():
+        environment.env['image'] = dfxlibs.general.image.Image(image_files)
         _logger.info(f'using image: {image_files}')
 
-    arguments.arguments.execute_arguments(env)
+    arguments.arguments.execute_arguments()
 
     """if env['args'].analyze:
         results = {}

@@ -26,6 +26,9 @@ import logging
 _logger = logging.getLogger(__name__)
 
 
+classes_type_cache = dict()
+
+
 class DatabaseObject:
     def db_fields(self) -> dict[str, Any]:
         return ({attr: self.__getattribute__(attr)
@@ -33,9 +36,11 @@ class DatabaseObject:
                  if attr[0] != '_'})
 
     def db_types(self) -> Dict[str, type]:
-        return ({attr: type(self.__getattribute__(attr))
-                 for attr in self.__dict__
-                 if attr[0] != '_'})
+        if self.__class__.__name__ not in classes_type_cache:
+            classes_type_cache[self.__class__.__name__] = ({attr: type(self.__getattribute__(attr))
+                                                            for attr in self.__dict__
+                                                            if attr[0] != '_'})
+        return classes_type_cache[self.__class__.__name__]
 
     @staticmethod
     def db_primary_key() -> List[str]:
@@ -139,7 +144,9 @@ class DatabaseObject:
                 create_index.append(f'{create_index_pre}_{index} ON {self.__class__.__name__} ({index} COLLATE NOCASE)')
                 create_index.append(f'{create_index_pre}_{index}_unix ON {self.__class__.__name__} ({index}_unix)')
             elif db_types[index] is str:
-                create_index.append(f'{create_index_pre}_{index} ON {self.__class__.__name__} ({index} COLLATE NOCASE)')
+                create_index.append(f'{create_index_pre}_{index}_nc ON {self.__class__.__name__} '
+                                    f'({index} COLLATE NOCASE)')
+                create_index.append(f'{create_index_pre}_{index} ON {self.__class__.__name__} ({index})')
             else:
                 create_index.append(f'{create_index_pre}_{index} ON {self.__class__.__name__} ({index})')
 
@@ -227,15 +234,20 @@ class DatabaseObject:
         return sqlite_con, *cursors
 
     @classmethod
-    def _db_select(cls, db_cur: sqlite3.Cursor, db_filter: Tuple[str, Tuple] = None):
+    def _db_select(cls, db_cur: sqlite3.Cursor, db_filter: Tuple[str, Tuple] = None, force_index_column = None):
         query = f'SELECT * FROM {cls.__name__}'
+        if force_index_column:
+            if force_index_column not in cls.db_index():
+                raise AttributeError('Attribute not indexed')
+            query = f'{query} INDEXED BY {cls.__name__}_{force_index_column}'
         if db_filter is None:
             db_cur.execute(query)
         else:
             db_cur.execute(f'{query} WHERE {db_filter[0]}', db_filter[1])
 
     @classmethod
-    def db_select(cls, db_cur: sqlite3.Cursor, db_filter: Tuple[str, Tuple] = None) -> Generator:
+    def db_select(cls, db_cur: sqlite3.Cursor, db_filter: Tuple[str, Tuple] = None,
+                  force_index_column: str = None) -> Generator:
         """
         Select objects from database and returns a generator to iterate over
 
@@ -243,14 +255,18 @@ class DatabaseObject:
         :type db_cur: sqlite3.Cursor
         :param db_filter: Optional filter to use as where clause
         :type db_filter: Tuple[str, Tuple]
+        :param force_index_column: Force to use the given column as index - otherwise let sqlite choose the index
+        :type force_index_column: str
         :return: returns items from database to iterate over
+        :raise AttributeError: if force_index_column is not indexed
         """
-        cls._db_select(db_cur, db_filter)
+        cls._db_select(db_cur, db_filter, force_index_column)
         while (item := db_cur.fetchone()) is not None:
             yield item
 
     @classmethod
-    def db_select_one(cls, db_cur: sqlite3.Cursor, db_filter: Tuple[str, Tuple] = None) -> Any:
+    def db_select_one(cls, db_cur: sqlite3.Cursor, db_filter: Tuple[str, Tuple] = None,
+                      force_index_column: str = None) -> Any:
         """
         Select objects from database and returns the first
 
@@ -258,7 +274,10 @@ class DatabaseObject:
         :type db_cur: sqlite3.Cursor
         :param db_filter: Optional filter to use as where clause
         :type db_filter: Tuple[str, Tuple]
+        :param force_index_column: Force to use the given column as index - otherwise let sqlite choose the index
+        :type force_index_column: str
         :return: returns the first item from database
+        :raise AttributeError: if force_index_column is not indexed
         """
-        cls._db_select(db_cur, db_filter)
+        cls._db_select(db_cur, db_filter, force_index_column)
         return db_cur.fetchone()

@@ -16,8 +16,8 @@
 """
 
 import argparse
+import sys
 
-from dfxlibs.cli.environment import Environment
 from dfxlibs import __version__
 
 
@@ -38,7 +38,8 @@ class Arguments:
         self.groups[group_id]['actions'].append({'args': args, 'kwargs': kwargs})
 
     def get_argument_parser(self) -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser(description=f'dfxlibs: A python digital forensics toolkit (version {__version__})')
+        parser = argparse.ArgumentParser(
+            description=f'dfxlibs: A python digital forensics toolkit (version {__version__})')
         for group_id in self.group_order:
             group = parser.add_argument_group(title=self.groups[group_id]['title'],
                                               description=self.groups[group_id]['description'])
@@ -47,14 +48,12 @@ class Arguments:
                 group.add_argument(*action['args'], **kw)
         return parser
 
-    def execute_arguments(self, env: Environment):
-        args = vars(env['args'])
-        for arg in args:
-            if args[arg]:
-                for group_id in self.group_order:
-                    for action in self.groups[group_id]['actions']:
-                        if '--' + arg in action['args'] and 'func' in action['kwargs']:
-                            action['kwargs']['func'](env)
+    def execute_arguments(self):
+        for ordered_arg in sys.argv:
+            for group_id in self.group_order:
+                for action in self.groups[group_id]['actions']:
+                    if ordered_arg in action['args'] and 'func' in action['kwargs']:
+                        action['kwargs']['func']()
 
 
 arguments = Arguments()

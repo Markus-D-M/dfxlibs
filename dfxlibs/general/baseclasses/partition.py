@@ -315,7 +315,7 @@ class Partition(DefaultClass):
                 if last_print + 2 < time():
                     print(f'\r{bytes_to_hr(data_count * chunk_size)} '
                           f'({data_count*chunk_size/self.bytes_size*100:.2f}%)/'
-                          f'{element_count} potential findings...', end='')
+                          f'{element_count} potential findings...          ', end='')
                     last_print = time()
                 for element in carve_func(current_data, current_offset):
                     if type(element) is int:
@@ -324,7 +324,7 @@ class Partition(DefaultClass):
                     else:
                         element_count += 1
                         yield element
-        print(f'\r{" " * 60}\r', end='')  # delete progress line
+        print(f'\r{" " * 70}\r', end='')  # delete progress line
 
     def get_volume_shadow_copy_filesystems(self) -> Tuple[int, pyvshadow.store, Iterator[pytsk3.FS_Info]]:
         if self.type_id != pytsk3.TSK_FS_TYPE_NTFS:

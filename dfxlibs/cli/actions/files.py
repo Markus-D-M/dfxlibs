@@ -19,7 +19,7 @@
 
 import logging
 import sqlite3
-from typing import List, Tuple, TYPE_CHECKING
+from typing import List, Tuple
 import hashlib
 import tlsh
 import time
@@ -32,9 +32,7 @@ from datetime import datetime
 from dfxlibs.general.helpers.db_filter import db_eq, db_lt, db_ge, db_and, db_gt
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.cli.arguments import register_argument
-
-if TYPE_CHECKING:
-    from dfxlibs.cli.environment import Environment
+from dfxlibs.cli.environment import env
 
 
 _logger = logging.getLogger(__name__)
@@ -50,7 +48,7 @@ def scan_dir(to_scan: List[Tuple[File, List[str]]], sqlite_cur: sqlite3.Cursor) 
         for entry in dir_entry.entries:
             if entry.name == '.' or entry.name == '..':
                 continue
-            if time.time() > last_time + 5:
+            if time.time() > last_time + 1:
                 # update progress
                 print(f'\r{count_insert + count_skip} files/directories prepared '
                       f'(inserted: {count_insert} / skipped: {count_skip})...', end='')
@@ -76,13 +74,11 @@ def scan_dir(to_scan: List[Tuple[File, List[str]]], sqlite_cur: sqlite3.Cursor) 
                                                                        'You can specify a partition with --part. The '
                                                                        'file entries will be stored in the meta_folder '
                                                                        'in a sqlite database', group_id='prepare')
-def prepare_files(env: 'Environment') -> None:
+def prepare_files() -> None:
     """
     scan all files and directories in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only the files and directories of this partition are scanned
 
-    :param env: cli environment
-    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     """
@@ -127,13 +123,11 @@ def prepare_files(env: 'Environment') -> None:
                                                                        'specify a partition with --part. The file '
                                                                        'entries will be stored in the meta_folder '
                                                                        'in a sqlite database', group_id='prepare')
-def prepare_vss_files(env: 'Environment') -> None:
+def prepare_vss_files() -> None:
     """
     scan for files and directories in Volume Shadow Copies in a given Image and stores them in a sqlite database.
     If partition is specified then only the files and directories of this partition are scanned
 
-    :param env: cli environment
-    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     """
@@ -146,10 +140,7 @@ def prepare_vss_files(env: 'Environment') -> None:
 
     _logger.info('start scanning for volume shadow copies')
     # specified partitions only (if specified)
-    for partition in image.partitions(part_name=part):
-        if partition.type_id != pytsk3.TSK_FS_TYPE_NTFS:
-            # NTFS only
-            continue
+    for partition in image.partitions(part_name=part, filesystem_typeid=pytsk3.TSK_FS_TYPE_NTFS):
         _logger.info(f'scan partition {partition.part_name}')
         # prepare database
         sqlite_con, sqlite_cur = File.db_open(meta_folder, partition.part_name)
@@ -182,13 +173,11 @@ def prepare_vss_files(env: 'Environment') -> None:
                                              'with --part. Possible algorithms are md5, sha1, sha256 and tlsh. A '
                                              'minimum filesize of 50 bytes is required for tlsh. The result is stored '
                                              'in the file database.', group_id='prepare')
-def hash_files(env: 'Environment') -> None:
+def hash_files() -> None:
     """
     Build hashes for all files <256MiB in a given Image and stores them to the sqlite file database in the meta_folder.
     If partition is specified then only the files and directories of this partition are scanned.
 
-    :param env: cli environment
-    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     :raise IOError: if image is not prepared (need to run --prepare_files first)
@@ -214,7 +203,7 @@ def hash_files(env: 'Environment') -> None:
 
     _logger.info(f'using algorithms {", ".join(hash_algorithms)}')
     # specified partitions only (if specified)
-    for partition in image.partitions(part_name=part):
+    for partition in image.partitions(part_name=part, only_with_filesystem=True):
 
         _logger.info(f'hashing files in partition {partition.part_name}')
 
@@ -278,13 +267,11 @@ def hash_files(env: 'Environment') -> None:
                                                             'files in all partitions. The result is stored in the file '
                                                             'database. You can specify a partition  with --part. ',
                    group_id='prepare')
-def file_types(env: 'Environment') -> None:
+def file_types() -> None:
     """
     Determine file types for all files in a given Image and stores them to the sqlite file database in the meta_folder.
     If partition is specified then only the files of this partition are scanned.
 
-    :param env: cli environment
-    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     :raise IOError: if image is not prepared (need to run --prepare_files first)
@@ -299,9 +286,8 @@ def file_types(env: 'Environment') -> None:
     _logger.info('starting filetype detection')
 
     # specified partitions only (if specified)
-    for partition in image.partitions(part_name=part):
-
-        _logger.info(f'determine filetypes in partition {partition.part_namem}')
+    for partition in image.partitions(part_name=part, only_with_filesystem=True):
+        _logger.info(f'determine filetypes in partition {partition.part_name}')
 
         # open database
         try:
@@ -351,12 +337,10 @@ def file_types(env: 'Environment') -> None:
                                                       'adding it in front of your path and separate it with a colon '
                                                       '(e.g. "vss#0:/path/testfile.txt" for /path/testfile.txt from '
                                                       'vss#0). You can give multiple files at once', group_id='special')
-def extract(env: 'Environment') -> None:
+def extract() -> None:
     """
     Extracts files from the image and stores them to the meta_folder.
 
-    :param env: cli environment
-    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     :raise IOError: if image is not prepared (need to run --prepare_files first)

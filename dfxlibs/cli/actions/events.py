@@ -20,7 +20,7 @@
 
 import logging
 
-from typing import List, TYPE_CHECKING
+from typing import List
 
 from dfxlibs.general.image import Image
 from dfxlibs.general.baseclasses.file import File
@@ -29,9 +29,8 @@ from dfxlibs.windows.events.evtxfile import EvtxFile, evtx_carver
 from dfxlibs.windows.events.event import Event
 from dfxlibs.general.helpers.db_filter import db_eq, db_or, db_and, db_in, db_gt
 from dfxlibs.cli.arguments import register_argument
+from dfxlibs.cli.environment import env
 
-if TYPE_CHECKING:
-    from dfxlibs.cli.environment import Environment
 
 _logger = logging.getLogger(__name__)
 
@@ -40,13 +39,11 @@ _logger = logging.getLogger(__name__)
                                                                          'and stores them in a sqlite database in the '
                                                                          'meta_folder.  You can specify a partition '
                                                                          'with --part. ', group_id='prepare')
-def prepare_evtx(env: 'Environment') -> None:
+def prepare_evtx() -> None:
     """
     read all windows evtx logs in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only the files and directories of this partition are scanned
 
-    :param env: cli environment
-    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     :raise IOError: if image is not scanned for files
@@ -61,7 +58,7 @@ def prepare_evtx(env: 'Environment') -> None:
     _logger.info('start preparing event (evtx) logs')
 
     # specified partitions only (if specified)
-    for partition in image.partitions(part_name=part):
+    for partition in image.partitions(part_name=part, only_with_filesystem=True):
         _logger.info(f'preparing events in partition {partition.part_name}')
 
         try:
@@ -99,13 +96,11 @@ def prepare_evtx(env: 'Environment') -> None:
 @register_argument('-cevtx', '--carve_evtx', action='store_true', help='carve for windows evtx entries and stores them '
                                                                        'in the same database as for the --prepare_evtx '
                                                                        'argument', group_id='carve')
-def carve_evtx(env: 'Environment') -> None:
+def carve_evtx() -> None:
     """
     carve all windows evtx logs in a given Image and stores them in a sqlite database in the meta_folder.
     If partition is specified then only the data of this partition is scanned
 
-    :param env: cli environment
-    :type env: Environment
     :return: None
     :raise AttributeError: if image is None
     """

@@ -1,9 +1,9 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='dfxlibs',
     version='0.0.2',
-    packages=['dfxlibs'],
+    packages=find_packages(),
     url='https://github.com',
     license='Apache 2.0',
     author='Markus D',
