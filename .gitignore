@@ -6,3 +6,4 @@ tests
 dist
 doc
 __pycache__
+*.egg-info
