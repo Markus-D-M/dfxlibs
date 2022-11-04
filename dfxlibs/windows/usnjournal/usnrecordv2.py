@@ -15,14 +15,20 @@
     limitations under the License.
 """
 
-from typing import List, Iterator, Union
+from typing import List, Iterator, Union, TYPE_CHECKING
 from datetime import datetime, timezone
 from struct import unpack
 
+
 from dfxlibs.general.baseclasses.defaultclass import DefaultClass
+from dfxlibs.general.baseclasses.file import File
 from dfxlibs.general.baseclasses.databaseobject import DatabaseObject
+from dfxlibs.general.helpers.db_filter import db_eq, db_and
 from dfxlibs.windows.helpers import MAX_FILETIME, EPOCH_AS_FILETIME, filetime_to_dt, ALL_FILE_ATTRIBUTE, \
     hr_file_attribute
+
+if TYPE_CHECKING:
+    import sqlite3
 
 
 USN_CARVER_OFFSET_STEP = 8
@@ -192,6 +198,37 @@ class USNRecordV2(DatabaseObject, DefaultClass):
         return cls(timestamp=timestamp, file_addr=file_addr, file_seq=file_seq, par_addr=par_addr, par_seq=par_seq,
                    usn=usn, reason=cls._reason_to_hr(reason), source_info=cls._source_to_hr(source_info), sec_id=sec_id,
                    file_attr=hr_file_attribute(file_attr), name=fname)
+
+    def retrieve_parent_folder(self, parent_folder_buffer: dict, sqlite_files_cur: 'sqlite3.Cursor'):
+        """
+        Try to retrieve parent folder from buffer dict or file database
+
+        :param parent_folder_buffer: list of parent folders already searched for (for performance)
+        :type parent_folder_buffer: dict
+        :param sqlite_files_cur: cursor to sqlite file database
+        :type sqlite_files_cur: sqlite3.Cursor
+        """
+        # try to find parent folder
+        parent_addr_seq = f'{self.par_addr}-{self.par_seq}'
+        if parent_addr_seq in parent_folder_buffer:
+            self.parent_folder = parent_folder_buffer[parent_addr_seq]
+        else:
+            # Optimize query (use only key column)
+            parent: File
+            for parent in File.db_select(sqlite_files_cur, db_and(db_eq('meta_addr', self.par_addr),
+                                                                  db_eq('meta_seq', self.par_seq),
+                                                                  db_eq('is_dir', 1)),
+                                         force_index_column='meta_addr'):
+                if parent.name == '/' and parent.parent_folder == '':
+                    # root directory
+                    parent_folder = parent.name
+                else:
+                    parent_folder = parent.parent_folder + '/' + parent.name
+                parent_folder_buffer[parent_addr_seq] = parent_folder
+                self.parent_folder = parent_folder
+                break
+            else:
+                parent_folder_buffer[parent_addr_seq] = ''
 
     @classmethod
     def _reason_to_hr(cls, reason: int):

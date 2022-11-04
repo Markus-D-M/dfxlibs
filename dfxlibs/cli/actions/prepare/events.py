@@ -25,7 +25,7 @@ from typing import List
 from dfxlibs.general.image import Image
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.general.helpers.db_filter import db_like
-from dfxlibs.windows.events.evtxfile import EvtxFile, evtx_carver
+from dfxlibs.windows.events.evtxfile import EvtxFile
 from dfxlibs.windows.events.event import Event
 from dfxlibs.general.helpers.db_filter import db_eq, db_or, db_and, db_in, db_gt
 from dfxlibs.cli.arguments import register_argument
@@ -90,42 +90,6 @@ def prepare_evtx() -> None:
             _logger.info(f'{file_record_count} event records added ({file_skip_count} skipped)')
         sqlite_events_con.commit()
         _logger.info(f'{record_count} event records from {file_count} files added for '
-                     f'partition {partition.part_name}')
-
-
-@register_argument('-cevtx', '--carve_evtx', action='store_true', help='carve for windows evtx entries and stores them '
-                                                                       'in the same database as for the --prepare_evtx '
-                                                                       'argument', group_id='carve')
-def carve_evtx() -> None:
-    """
-    carve all windows evtx logs in a given Image and stores them in a sqlite database in the meta_folder.
-    If partition is specified then only the data of this partition is scanned
-
-    :return: None
-    :raise AttributeError: if image is None
-    """
-    image = env['image']
-    part = env['args'].part
-    meta_folder = env['meta_folder']
-
-    if image is None:
-        raise AttributeError('ERROR: No image file specified (--image)')
-
-    _logger.info('start carving event (evtx) logs')
-
-    # specified partitions only (if specified)
-    for partition in image.partitions(part_name=part):
-        _logger.info(f'carving events in partition {partition.part_name}')
-
-        sqlite_events_con, sqlite_events_cur = Event.db_open(meta_folder, partition.part_name)
-        record_count = 0
-        event: Event
-        for event in partition.carve(evtx_carver):
-            if event.db_insert(sqlite_events_cur):
-                record_count += 1
-
-        sqlite_events_con.commit()
-        _logger.info(f'{record_count} event records carved for '
                      f'partition {partition.part_name}')
 
 

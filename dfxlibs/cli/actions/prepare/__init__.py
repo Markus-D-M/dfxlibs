@@ -1,4 +1,3 @@
-# coding: utf-8
 """
     Copyright 2022 Markus D (mar.d@gmx.net)
 
@@ -14,14 +13,3 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 """
-
-import os
-import glob
-import importlib
-
-# Dynamic import all under ./actions incl. subdirectories
-
-__filedir__ = os.path.dirname(os.path.realpath(__file__))
-for file in glob.glob(os.path.join(__filedir__, '**', '[!_]*.py'), recursive=True):
-    module = file.replace(__filedir__, '').replace('.py', '').replace(os.path.sep, '.')
-    importlib.import_module(__name__ + module)

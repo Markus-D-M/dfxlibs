@@ -26,6 +26,7 @@ from io import BytesIO
 from dfxlibs.general.baseclasses.databaseobject import DatabaseObject
 from dfxlibs.general.baseclasses.defaultclass import DefaultClass
 from dfxlibs.windows.helpers import filetime_to_dt
+from dfxlibs.windows.prefetch.executes import Executes
 
 if TYPE_CHECKING:
     from dfxlibs.general.baseclasses.file import File
@@ -150,6 +151,18 @@ class PrefetchFile(DatabaseObject, DefaultClass):
 
     def get_run_times(self) -> List[int]:
         return json.loads(self.run_times)
+
+    def get_executes(self) -> Iterator['Executes']:
+        for run_time in self.get_run_times():
+            if run_time > 0:
+                execute = Executes(executable_filename=self.executable_filename,
+                                   executable_addr=self.executable_addr,
+                                   executable_seq=self.executable_seq,
+                                   parent_folder=self.parent_folder,
+                                   prefetch_hash=self.prefetch_hash,
+                                   run_time=datetime.fromtimestamp(run_time, tz=timezone.utc),
+                                   carved=self.carved)
+                yield execute
 
     @staticmethod
     def db_index():
