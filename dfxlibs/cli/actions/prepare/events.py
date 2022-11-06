@@ -24,7 +24,6 @@ from typing import List
 
 from dfxlibs.general.image import Image
 from dfxlibs.general.baseclasses.file import File
-from dfxlibs.general.helpers.db_filter import db_like
 from dfxlibs.windows.events.evtxfile import EvtxFile
 from dfxlibs.windows.events.event import Event
 from dfxlibs.general.helpers.db_filter import db_eq, db_or, db_and, db_in, db_gt
@@ -70,7 +69,8 @@ def prepare_evtx() -> None:
 
         record_count = 0
         file_count = 0
-        for file in File.db_select(sqlite_files_cur, db_and(db_like('name', '%.evtx'), db_gt('size', 0))):
+        for file in File.db_select(sqlite_files_cur, db_and(db_eq('extension', 'evtx'), db_gt('size', 0)),
+                                   force_index_column='extension'):
             file.open(partition)
             try:
                 evtx_file = EvtxFile(file)

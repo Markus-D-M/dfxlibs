@@ -55,6 +55,7 @@ class File(DatabaseObject, DefaultClass):
         self.allocated = False
         self.size = -1
         self.name = ''
+        self.extension = ''
         self.atime = datetime.fromtimestamp(0, tz=timezone.utc)
         self.crtime = datetime.fromtimestamp(0, tz=timezone.utc)
         self.ctime = datetime.fromtimestamp(0, tz=timezone.utc)
@@ -81,6 +82,9 @@ class File(DatabaseObject, DefaultClass):
                 self.par_addr = tsk3_file.info.name.par_addr
                 self.par_seq = tsk3_file.info.name.par_seq
                 self.name = self._tsk3_file.info.name.name.decode('utf8')
+                if '.' in self.name:
+                    _, self.extension = self.name.rsplit('.', maxsplit=1)
+                    self.extension = self.extension.lower()
                 self.is_dir = tsk3_file.info.name.type == pytsk3.TSK_FS_NAME_TYPE_ENUM.TSK_FS_NAME_TYPE_DIR
                 self.is_link = tsk3_file.info.name.type == pytsk3.TSK_FS_NAME_TYPE_ENUM.TSK_FS_NAME_TYPE_LNK
                 self.allocated = tsk3_file.info.name.flags == pytsk3.TSK_FS_NAME_FLAG_ENUM.TSK_FS_NAME_FLAG_ALLOC
@@ -254,6 +258,8 @@ class File(DatabaseObject, DefaultClass):
                                                                '_tsk3_file', '_parent_partition']}
             new_attr['size'] = ads.size
             new_attr['name'] = f'{self.name}:{ads.name}'
+            if '.' in ads.name:
+                _, new_attr['extension'] = ads.name.rsplit('.', maxsplit=1)
             file_ads = File.from_values(**new_attr)
             yield file_ads
 
@@ -267,7 +273,7 @@ class File(DatabaseObject, DefaultClass):
     @staticmethod
     def db_index():
         return ['meta_addr', 'meta_seq', 'par_addr', 'par_seq', 'name', 'parent_folder', 'md5', 'sha1',
-                'sha256', 'tlsh', 'atime', 'ctime', 'crtime', 'mtime']
+                'sha256', 'tlsh', 'atime', 'ctime', 'crtime', 'mtime', 'extension']
 
     @staticmethod
     def db_primary_key() -> List[str]:

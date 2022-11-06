@@ -21,7 +21,7 @@ from dfxlibs.cli.environment import env
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.windows.prefetch.prefetchfile import PrefetchFile
 from dfxlibs.windows.prefetch.executes import Executes
-from dfxlibs.general.helpers.db_filter import db_and, db_like, db_gt
+from dfxlibs.general.helpers.db_filter import db_and, db_eq, db_gt
 from dfxlibs.cli.arguments import register_argument
 
 
@@ -63,7 +63,8 @@ def prepare_prefetch() -> None:
         sqlite_execute_con, sqlite_execute_cur = Executes.db_open(meta_folder, partition.part_name)
 
         count = 0
-        for file in File.db_select(sqlite_files_cur, db_and(db_like('name', '%.pf'), db_gt('size', 0))):
+        for file in File.db_select(sqlite_files_cur, db_and(db_eq('extension', 'pf'), db_gt('size', 0)),
+                                   force_index_column='extension'):
             file.open(partition)
             try:
                 pf = PrefetchFile(prefetch_file=file)
