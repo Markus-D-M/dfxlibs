@@ -24,9 +24,7 @@ import os
 
 from dfxlibs.general.baseclasses.databaseobject import DatabaseObject
 from dfxlibs.general.baseclasses.defaultclass import DefaultClass
-
 from dfxlibs.general.filesystems.ntfs import NtfsAds, NTFSAttrFileName
-
 
 if TYPE_CHECKING:
     from dfxlibs.general.baseclasses.partition import Partition
@@ -136,8 +134,6 @@ class File(DatabaseObject, DefaultClass):
         if self._as_directory is None:
             self._as_directory = self._tsk3_file.as_directory()
         for entry in self._as_directory:
-            #if entry.info.name.name.decode('utf8') in ['.', '..']:
-            #    continue
             file = File(entry, self._parent_partition)
             file.source = self.source
             yield file
@@ -224,7 +220,7 @@ class File(DatabaseObject, DefaultClass):
 
         try:
             data = self._tsk3_file.read_random(self._offset, to_read, attr_type, attr_id)
-        except OSError as e:
+        except OSError:
             # unable to extract data from image
             # reading sector by sector as far as it works
             data = b''

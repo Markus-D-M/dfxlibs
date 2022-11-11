@@ -17,8 +17,10 @@
 
 import argparse
 import sys
+from datetime import datetime, timezone
 
 from dfxlibs import __version__
+from dfxlibs.cli.environment import env
 
 
 class Arguments:
@@ -49,6 +51,22 @@ class Arguments:
         return parser
 
     def execute_arguments(self):
+        if env['args'].analyze_start:
+            try:
+                env['args'].analyze_start = datetime.strptime(env['args'].analyze_start, '%Y-%m-%d'
+                                                              ).replace(tzinfo=timezone.utc)
+            except ValueError:
+                raise ValueError(f'ERROR: The given analyze_start date {env["args"].analyze_start} is not in the '
+                                 f'format YYYY-MM-DD')
+
+        if env['args'].analyze_end:
+            try:
+                env['args'].analyze_end = datetime.strptime(env['args'].analyze_end, '%Y-%m-%d'
+                                                            ).replace(tzinfo=timezone.utc)
+            except ValueError:
+                raise ValueError(f'ERROR: The given analyze_end date {env["args"].analyze_end} is not in the format '
+                                 f'YYYY-MM-DD')
+
         for ordered_arg in sys.argv:
             for group_id in self.group_order:
                 for action in self.groups[group_id]['actions']:
@@ -73,6 +91,14 @@ arguments.add_argument('--part', help='Specify partition for actions like --prep
                                       'be included.', group_id='general')
 arguments.add_group('prepare', 'Preparation', 'These arguments prepare the data from the image for further analysis')
 arguments.add_group('carve', 'Carving', 'These arguments are for different carving options.')
+arguments.add_group('analyze', 'Analyze', 'These arguments are for in-depth analysis of the image.')
+arguments.add_argument('--analyze_start', help='Specify a start date in format YYYY-MM-DD for event based analysis '
+                                               '(e.g. logins). Only events after or equal the given date are '
+                                               'analyzed.', group_id='analyze')
+arguments.add_argument('--analyze_end', help='Specify a end date in format YYYY-MM-DD for event based analysis '
+                                             '(e.g. logins). Only events before or equal the given date are '
+                                             'analyzed.', group_id='analyze')
+
 arguments.add_group('special', 'Special actions', 'These parameters contains short and simple actions.')
 
 

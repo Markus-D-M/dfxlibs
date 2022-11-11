@@ -29,6 +29,7 @@ from json import dumps, loads, JSONDecodeError
 
 
 import dfxlibs
+from dfxlibs.general.helpers.excelwriter import ExcelWriter, ExcelTable
 
 from dfxlibs.cli import actions, environment, arguments
 
@@ -142,8 +143,23 @@ def main():
         environment.env['image'] = dfxlibs.general.image.Image(image_files)
         _logger.info(f'using image: {image_files}')
 
-    arguments.arguments.execute_arguments()
+    try:
+        arguments.arguments.execute_arguments()
+    except Exception as e:
+        print(e)
+        sys.exit(1)
 
+    if environment.env['results']:
+        makedirs(join(environment.env['meta_folder'], 'reports'), exist_ok=True)
+        filename = join(environment.env['meta_folder'], 'reports',
+                        datetime.datetime.now().strftime('%Y%m%d_%H%M%S') + '_report.xlsx')
+        _logger.info(f'Writing analysis report to {filename}')
+        result_file = ExcelWriter(filename)
+        for result_sheet in environment.env['results']:
+            result_data = environment.env['results'][result_sheet]
+            result_file.add_sheet(result_sheet, result_data)
+
+        result_file.close()
     """if env['args'].analyze:
         results = {}
         if 'sessions' in env['args'].analyze:

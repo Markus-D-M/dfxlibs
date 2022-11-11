@@ -81,12 +81,15 @@ def prepare_evtx() -> None:
             file_count += 1
             file_record_count = 0
             file_skip_count = 0
-            for event in evtx_file.records:
-                if event.db_insert(sqlite_events_cur):
-                    record_count += 1
-                    file_record_count += 1
-                else:
-                    file_skip_count += 1
+            try:
+                for event in evtx_file.records:
+                    if event.db_insert(sqlite_events_cur):
+                        record_count += 1
+                        file_record_count += 1
+                    else:
+                        file_skip_count += 1
+            except OSError:
+                _logger.error(f'error while reading file {file.source}:{file.name} - skipping')
             _logger.info(f'{file_record_count} event records added ({file_skip_count} skipped)')
         sqlite_events_con.commit()
         _logger.info(f'{record_count} event records from {file_count} files added for '
