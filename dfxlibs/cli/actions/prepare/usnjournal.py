@@ -102,6 +102,10 @@ def prepare_usnjournal() -> None:
                 else:
                     journal.seek(journal.tell() - len(data) - 8)
                 break
+            if offset == journal.tell():
+                break
+            else:
+                offset = journal.tell()
 
         last_time = time.time()  # for showing progress
         parent_folders = {}  # cache parent_folder searches

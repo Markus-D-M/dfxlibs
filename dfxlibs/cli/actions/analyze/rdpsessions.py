@@ -48,14 +48,12 @@ def analyze_rdp_sessions() -> None:
     if image is None:
         raise AttributeError('ERROR: No image file specified (--image)')
 
-    _logger.info('start looking for rdp sessions')
+    _logger.info('looking for rdp sessions')
 
     # get all session events
     session_events = []
     # specified partitions only (if specified)
     for partition in image.partitions(part_name=part, only_with_filesystem=True):
-        _logger.info(f'reading rdp sessions in partition {partition.part_name}')
-
         try:
             sqlite_events_con, sqlite_events_cur = Event.db_open(meta_folder, partition.part_name, False)
         except IOError:

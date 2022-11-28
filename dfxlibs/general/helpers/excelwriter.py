@@ -8,7 +8,7 @@
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
 
-       http://www.apache.org/licenses/LICENSE-2.0
+       https://www.apache.org/licenses/LICENSE-2.0
 
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,7 +20,7 @@ import datetime
 
 import xlsxwriter
 
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union, Tuple
 
 if TYPE_CHECKING:
     from xlsxwriter.worksheet import Worksheet
@@ -41,6 +41,9 @@ class ExcelWriter:
             'bold': {'bold': True},
             'title': {'bold': True, 'font_size': 18},
             'description': {'text_wrap': True, 'valign': 'vcenter'},
+            'section_header': {'bg_color': '#004b76', 'font_color': 'white', 'bold': True},
+            'list_item_name': {'bold': True},
+            'list_item_value': {'align': 'left'},
             'datetime': {'num_format': 'yyyy-mm-dd hh:mm:ss.000', 'align': 'left'},
             'timedelta': {'num_format': '[h]:mm:ss', 'align': 'left'}
         }
@@ -104,7 +107,6 @@ class ExcelWriter:
             sheet_name = self.current_sheet_name
         if offset_row is not None:
             self.current_row = offset_row
-        sheet = self._get_sheet(sheet_name)
         for row_number, row_value in enumerate(data):
             for col_number, col_data in enumerate(row_value):
                 if type(col_data) == list:
@@ -123,7 +125,7 @@ class ExcelWriter:
             self.sheets[sheet_name] = self.workbook.add_worksheet(sheet_name)
         return self.sheets[sheet_name]
 
-    def write(self, row: int, col: int, content: any, sheet_name: str = None, default_format: List[str] = []):
+    def write(self, row: int, col: int, content: any, sheet_name: str = None, default_format: List[str] = None):
         """
         writes content to a cell
 
@@ -139,6 +141,8 @@ class ExcelWriter:
         :type default_format: List[str]
         :return:
         """
+        if default_format is None:
+            default_format = []
         if sheet_name is None:
             sheet_name = self.current_sheet_name
         sheet = self._get_sheet(sheet_name)
@@ -157,7 +161,9 @@ class ExcelWriter:
         sheet.write_comment(row, col, comment)
 
     def merge_write(self, first_row: int, first_col: int, last_row: int, last_col: int, content: any,
-                    sheet_name: str = None, default_format: List[str] = []):
+                    sheet_name: str = None, default_format: List[str] = None):
+        if default_format is None:
+            default_format = []
         if sheet_name is None:
             sheet_name = self.current_sheet_name
         sheet = self._get_sheet(sheet_name)
@@ -171,12 +177,16 @@ class ExcelWriter:
         :param offset_row: give the first available row for this table object (default 0)
         :return: the next free row after the table
         """
-        self.write_cells([content.header], offset_row=offset_row, offset_col=1,
-                         default_format=['bg-darkblue-100', 'bold'])
-        self.write_cells(content.data, offset_row=offset_row+1, offset_col=1)
-        if content.autofilter and len(content.data) > 0:
-            self.auto_filter(first_row=offset_row, first_col=1,
-                             last_row=offset_row+len(content.data)-1, last_col=len(content.header))
+        if content.header:
+            self.write_cells([content.header], offset_row=offset_row, offset_col=1,
+                             default_format=['bg-darkblue-100', 'bold'])
+            self.write_cells(content.data, offset_row=offset_row+1, offset_col=1)
+            if content.autofilter and len(content.data) > 0:
+                self.auto_filter(first_row=offset_row, first_col=1,
+                                 last_row=offset_row + len(content.data) - 1, last_col=len(content.header))
+        else:
+            self.write_cells(content.data, offset_row=offset_row, offset_col=1)
+
         # col sizes
         for col in range(len(content.header)):
             max_len = len(content.header[col])
@@ -191,6 +201,31 @@ class ExcelWriter:
                 max_len = max(max_len,  col_len)
             self.set_col_width(col + 1, col + 1, max_len * 1.25)
         return offset_row + len(content.data)
+
+    def _add_excel_list(self, content: 'ExcelList', offset_row: int = 0) -> int:
+        """
+        add a description list to active sheet
+
+        :param content: excel list object to add
+        :param offset_row: give the first available row for this table object (default 0)
+        :return: the next free row after the table
+        """
+        max_col1 = 0
+        max_col2 = 0
+        for section in content.sections:
+            self.merge_write(offset_row, 1, offset_row, 2, section, default_format=['section_header'])
+            offset_row += 1
+            for item_name, item_value in content.section_content[section]:
+                self.write(offset_row, 1, item_name, default_format=['list_item_name'])
+                self.write(offset_row, 2, item_value, default_format=['list_item_value'])
+                max_col1 = max(max_col1, len(item_name))
+                max_col2 = max(max_col2, len(str(item_value)))
+                offset_row += 1
+            offset_row += 1
+
+        self.set_col_width(1, 1, max_col1 * 1.25)
+        self.set_col_width(2, 2, max_col2 * 1.25)
+        return offset_row + 1
 
     def _add_excel_chart(self, content: 'ExcelChart', offset_row: int = 0) -> int:
         """
@@ -231,7 +266,7 @@ class ExcelWriter:
         self.merge_write(2 + offset_row, 1, 2+offset_row, 5, content.description, default_format=['description'])
         return 3 + offset_row
 
-    def add_sheet(self, sheet_name: str, content: List[Union['ExcelTable', 'SheetHeader']]):
+    def add_sheet(self, sheet_name: str, content: List[Union['ExcelTable', 'SheetHeader', 'ExcelChart', 'ExcelList']]):
         self.current_sheet_name = sheet_name
         offset_row = 1
         for entry in content:
@@ -241,7 +276,8 @@ class ExcelWriter:
                 offset_row = self._add_excel_table(entry, offset_row=offset_row) + 1
             elif type(entry) is ExcelChart:
                 offset_row = self._add_excel_chart(entry, offset_row=offset_row) + 1
-
+            elif type(entry) is ExcelList:
+                offset_row = self._add_excel_list(entry, offset_row=offset_row) + 1
 
     def close(self):
         self.workbook.close()
@@ -260,10 +296,19 @@ class ExcelTable:
         self.data: List[List] = []
 
 
+class ExcelList:
+    def __init__(self):
+        self.sections = []
+        self.section_content = {}
+
+    def add_section(self, name: str, content: List[Tuple[str, str]]):
+        self.sections.append(name)
+        self.section_content[name] = content
+
+
 class ExcelChart:
     def __init__(self):
         self.values: List = []
         self.categories: List = []
         self.type = ''
         self.title = ''
-

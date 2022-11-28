@@ -147,6 +147,7 @@ def main():
         arguments.arguments.execute_arguments()
     except Exception as e:
         print(e)
+        raise
         sys.exit(1)
 
     if environment.env['results']:

@@ -47,16 +47,24 @@ class RegistryEntry(DatabaseObject, DefaultClass):
 
     def __init__(self, timestamp: datetime = datetime.fromtimestamp(0, tz=timezone.utc),
                  parent_key: str = '', name: str = '',
-                 rtype: str = '', content: any = '', is_key: bool = False):
+                 rtype: str = '', parsed_content: any = '', raw_content: str = '',
+                 is_key: bool = False, classname: str = '', deleted: bool = False):
         self.timestamp = timestamp
         self.parent_key = parent_key
         self.is_key = is_key
         self.name = name
         self.rtype = rtype
-        self.content = self._value_to_json(content)
+        self.classname = classname
+        self.deleted = deleted
+        self.parsed_content = self._value_to_json(parsed_content)
+        self.raw_content = raw_content
 
     def get_real_value(self):
-        return self._json_to_value(self.content, self.rtype)
+        return self._json_to_value(self.parsed_content, self.rtype)
+
+    @staticmethod
+    def db_index() -> List[str]:
+        return ['parent_key', 'name', 'timestamp']
 
     @staticmethod
     def db_primary_key() -> List[str]:

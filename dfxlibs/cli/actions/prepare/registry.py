@@ -18,95 +18,15 @@
 """
 
 import logging
-import sqlite3
-from Registry import Registry, RegistryParse
-from Registry.Registry import RegistryValue
-from datetime import datetime, timezone
 
 from dfxlibs.cli.environment import env
 from dfxlibs.windows.registry.registryentry import RegistryEntry
 from dfxlibs.general.baseclasses.file import File
 from dfxlibs.general.helpers.db_filter import db_and, db_like, db_eq
 from dfxlibs.cli.arguments import register_argument
-
+from dfxlibs.windows.registry.registryparser import parse_registry
 
 _logger = logging.getLogger(__name__)
-
-
-def recursive_registry(key, db_cur: sqlite3.Cursor = None, mount_point: str = None):
-    # delete hive base name
-    kpath: str = key.path() + '\\'
-    hive_name, kpath = kpath.split('\\', 1)
-    # if kpath[:4] == 'ROOT':
-    #     kpath = kpath[4:]
-    kpath = kpath.strip('\\')
-    mount_point = mount_point.strip('\\')
-    path = (mount_point + '\\' + kpath).strip('\\')
-    try:
-        parent, name = path.rsplit('\\', 1)
-    except ValueError:
-        parent = '\\'
-        name = path
-    try:
-        value = key.value('(default)')
-        rtype = value.value_type_str()
-        timestamp = key.timestamp().replace(tzinfo=timezone.utc)
-        try:
-            content = value.value()
-        except RegistryParse.UnknownTypeException:
-            content = value.raw_data()
-    except Registry.RegistryValueNotFoundException:
-        rtype = 'RegSZ'
-        content = '(value not set)'
-        timestamp = key.timestamp().replace(tzinfo=timezone.utc)
-
-    regentry = RegistryEntry(timestamp=timestamp,
-                             parent_key=parent,
-                             name=name,
-                             rtype=rtype,
-                             content=content,
-                             is_key=True)
-
-    regentry.db_insert(db_cur)
-
-    # values
-    timestamp = datetime.fromtimestamp(0, tz=timezone.utc)
-    value: RegistryValue
-    for value in key.values():
-        try:
-            name = value.name()
-        except UnicodeDecodeError:
-            name = '(decode error)'
-        if name == '(default)':
-            continue
-        rtype = value.value_type_str()
-        try:
-            content = value.value()
-        except (RegistryParse.UnknownTypeException, UnicodeDecodeError):
-            content = value.raw_data()
-        if type(content) is bytes:
-            content = content.hex()
-        elif type(content) is datetime:
-            content = content.timestamp()
-        regentry = RegistryEntry(timestamp=timestamp,
-                                 parent_key=path,
-                                 name=name,
-                                 rtype=rtype,
-                                 content=content,
-                                 is_key=False)
-        regentry.db_insert(db_cur)
-    # using private attribute to catch errors while parsing single subkeys
-    if key._nkrecord.subkey_number() > 0:
-        gen_subkeys = key._nkrecord.subkey_list().keys()
-        while True:
-            try:
-                subkey_raw = next(gen_subkeys)
-                subkey = Registry.RegistryKey(subkey_raw)
-                recursive_registry(subkey, db_cur, mount_point)
-            except StopIteration:
-                break
-            except RegistryParse.ParseException as e:
-                _logger.warning(f'Error while parsing subkey from {path}/{name}: {str(e)}')
 
 
 @register_argument('-preg', '--prepare_reg', action='store_true', help='read the windows registry and stores them in a '
@@ -167,8 +87,11 @@ def prepare_registry() -> None:
                 # hive not found (perhaps no windows system partition)
                 continue
             hive_file.open(partition)
-            hive_reg = Registry.Registry(hive_file)
-            recursive_registry(hive_reg.root(), sqlite_registry_rw, hive['mountpoint'])
+            hive_buf = hive_file.read()
+
+            for reg_entry in parse_registry(hive_buf, hive['mountpoint']):
+                reg_entry.db_insert(sqlite_registry_rw)
+
             sqlite_registry_con.commit()
 
         for user_profile in RegistryEntry.db_select(sqlite_registry_ro, db_and(
@@ -192,8 +115,13 @@ def prepare_registry() -> None:
                 if not hive_file:
                     _logger.warning(f'profile hive {hive["filename"]} in profile {profile_folder} not found')
                     continue
+
                 hive_file.open(partition)
-                hive_reg = Registry.Registry(hive_file)
-                recursive_registry(hive_reg.root(), sqlite_registry_rw, hive['mountpoint'])
+                hive_buf = hive_file.read()
+
+                for reg_entry in parse_registry(hive_buf, hive['mountpoint']):
+                    reg_entry.db_insert(sqlite_registry_rw)
+
                 sqlite_registry_con.commit()
+
     _logger.info('preparing registry finished')
