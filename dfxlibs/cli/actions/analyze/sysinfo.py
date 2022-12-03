@@ -16,10 +16,15 @@
 
 import logging
 
+from dfxlibs.windows.registry.analysis.sam import SAM
+from dfxlibs.windows.registry.analysis.system import SYSTEM
+from dfxlibs.windows.registry.analysis.security import SECURITY
+from dfxlibs.windows.registry.analysis.software import SOFTWARE
 from dfxlibs.cli.arguments import register_argument
 from dfxlibs.cli.environment import env
 from dfxlibs.windows.registry.registryentry import RegistryEntry
-from dfxlibs.windows.registry.registryinfo import get_lsa_secrets, get_domain_cache, get_os_infos, get_network_devices
+from dfxlibs.windows.registry.registryinfo import get_os_infos, get_network_devices, \
+    get_user
 from dfxlibs.general.helpers.excelwriter import SheetHeader, ExcelList
 
 _logger = logging.getLogger(__name__)
@@ -49,6 +54,14 @@ def sysinfo():
         except IOError:
             raise IOError('ERROR: No registry database. Use --prepare_reg first')
 
+        try:
+            env['globals']['system'] = SYSTEM(sqlite_reg_cur)
+            env['globals']['sam'] = SAM(sqlite_reg_cur, env['globals']['system'].boot_key)
+            env['globals']['security'] = SECURITY(sqlite_reg_cur, env['globals']['system'].boot_key)
+            env['globals']['software'] = SOFTWARE(sqlite_reg_cur)
+        except ValueError:
+            continue
+
         os_infos = get_os_infos(sqlite_reg_cur)
         for name in os_infos:
             os_info_result.append((name, os_infos[name]))
@@ -67,17 +80,20 @@ def sysinfo():
                 net_info_result.append(('Default Gateway:', adapter_info['DefaultGateway']))
             net_info_result.append(('', ''))
 
-        lsa_secrets = get_lsa_secrets(sqlite_reg_cur)
-        if 'NL$KM' in lsa_secrets:
-            dcc = get_domain_cache(sqlite_reg_cur, lsa_secrets['NL$KM'])
+            dcc = env['globals']['security'].domain_cache
             for nl_record in dcc.nl_records:
                 dcc_result.append(('User:', f'{nl_record.domain_name}\\{nl_record.user}'))
-                dcc_result.append(('User Id:', nl_record.user_id))
+                dcc_result.append(('User Id:', nl_record.rid))
                 dcc_result.append(('User Principal Name:', nl_record.upn))
                 dcc_result.append(('Full Name:', nl_record.full_name))
-                dcc_result.append(('MS Cache V2:', nl_record.ms_cache_v2.hex()))
-                dcc_result.append(('Hashcat:', nl_record.get_hashcat_row(dcc.iteration_count)))
+                if env['globals']['security'].is_pre_vista:
+                    dcc_result.append(('MS Cache V1:', nl_record.ms_cache.hex()))
+                    dcc_result.append(('Hashcat:', nl_record.get_hashcat_row(dcc.iteration_count)))
+                else:
+                    dcc_result.append(('MS Cache V2:', nl_record.ms_cache.hex()))
+                    dcc_result.append(('Hashcat:', nl_record.get_hashcat_row(dcc.iteration_count)))
                 dcc_result.append(('', ''))
+        print (get_user(sqlite_reg_cur))
 
     result.add_section('Operating System Information', os_info_result)
     result.add_section('Active Network Devices', net_info_result)
@@ -86,6 +102,3 @@ def sysinfo():
     header.title = 'System Information'
     header.description = 'List multiple different system and user information'
     env['results']['SysInfo'] = [header, result]
-
-
-

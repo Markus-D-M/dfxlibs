@@ -99,7 +99,8 @@ def prepare_registry() -> None:
                 db_eq('name', 'ProfileImagePath')
                 )):
             _, sid = user_profile.parent_key.rsplit('\\', 1)
-            profile_folder = user_profile.get_real_value()[2:].replace('\\', '/')
+            _, folder = user_profile.get_real_value().split('\\', 1)
+            profile_folder = '/' + folder.replace('\\', '/')
             hives = [
                 {'filename': 'NTUSER.DAT', 'filepath': profile_folder,
                  'mountpoint': f'HKU\\{sid}'},

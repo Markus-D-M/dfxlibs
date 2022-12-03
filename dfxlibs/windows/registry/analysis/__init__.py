@@ -1,7 +1,4 @@
-# coding: utf-8
 """
-    Environment class
-
     Copyright 2022 Markus D (mar.d@gmx.net)
 
     Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,19 +13,3 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 """
-
-import argparse
-from typing import TypedDict, Dict, Optional
-import dfxlibs
-
-
-class Environment(TypedDict):
-    args: argparse.Namespace
-    meta_folder: str
-    config: Dict
-    image: Optional[dfxlibs.general.image.Image]
-    results: Dict
-    globals: Dict
-
-
-env: Environment = Environment(args=argparse.Namespace(), meta_folder='', config={}, image=None, results={}, globals={})

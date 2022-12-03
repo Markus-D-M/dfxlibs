@@ -18,6 +18,7 @@
 """
 
 from datetime import datetime, timezone
+import struct
 
 HUNDREDS_OF_NANOSECONDS = 10e6
 EPOCH_AS_FILETIME = 116444736e9  # 1970-01-01
@@ -119,3 +120,18 @@ def hr_file_attribute(file_attribute: int) -> str:
         if flag & file_attribute:
             descr.append(FILE_ATTRIBUTE_DESCRIPTIONS[flag])
     return ' / '.join(descr)
+
+
+def bytes_to_sid(raw_sid: bytes) -> str:
+    """
+    Converts a byte encoded SID to string in format 'S-{version}-{authority}-{values}'
+
+    :param raw_sid: SID as encoded bytes
+    :type raw_sid: bytes
+    :return: SID as str
+    :rtype str:
+    """
+    version, length = struct.unpack_from('2B', raw_sid)
+    authority, = struct.unpack_from('>Q', b'\0\0' + raw_sid[2:])
+    values = struct.unpack_from(f'<{length}I', raw_sid[8:])
+    return f'S-{version}-{authority}-{"-".join([str(v) for v in values])}'

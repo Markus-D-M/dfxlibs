@@ -136,8 +136,9 @@ class PrefetchFile(DatabaseObject, DefaultClass):
                 if self.executable_filename == exe_name[:len(self.executable_filename)]:
                     self.parent_folder = parent_folder
                     self.executable_filename = exe_name
-                    self.executable_addr = metric.file_reference & 0xffffffffffff
-                    self.executable_seq = metric.file_reference >> 48
+                    if metric.file_reference:
+                        self.executable_addr = metric.file_reference & 0xffffffffffff
+                        self.executable_seq = metric.file_reference >> 48
             self.metrics = json.dumps(tmp)
 
             tmp = []

@@ -18,7 +18,7 @@ import logging
 import struct
 from Registry import RegistryParse
 from datetime import datetime, timezone
-from typing import Iterator
+from typing import Iterator, Optional
 
 from dfxlibs.windows.registry.registryentry import RegistryEntry
 
@@ -52,7 +52,10 @@ def get_value_content(vk: RegistryParse.VKRecord) -> (any, str):
     content = ''
     rtype = vk.data_type_str()
     try:
-        content = vk.data()
+        try:
+            content = vk.data()
+        except RegistryParse.RegistryStructureDoesNotExist:
+            content = '(not exists error)'
         if rtype.startswith('Unknown'):
             raise RegistryParse.UnknownTypeException('')
     except RegistryParse.UnknownTypeException:
@@ -86,10 +89,10 @@ def get_value_content(vk: RegistryParse.VKRecord) -> (any, str):
     return content, rtype
 
 
-def _rebuild_key_path(key: RegistryParse.NKRecord, mount_point:str, recovered: bool = False) -> str:
+def _rebuild_key_path(key: RegistryParse.NKRecord, mount_point: str, recovered: bool = False) -> str:
     p = key
     parent_keys = [key]
-    offsets = set([p._offset])
+    offsets = {p._offset}
     while p.has_parent_key():
         p = p.parent_key()
         if p._offset in offsets:
@@ -144,7 +147,7 @@ def walk_registry(key: RegistryParse.NKRecord, mount_point: str = None, recovere
 
         # key default value (value name == "")
         try:
-            value = None
+            value: Optional[RegistryParse.VKRecord] = None
             for v in key.values_list().values():
                 try:
                     if v.name() == '':
@@ -167,7 +170,10 @@ def walk_registry(key: RegistryParse.NKRecord, mount_point: str = None, recovere
             rtype = 'RegSZ'
             content = '(value not set)'
             raw_content = ''
-            timestamp = key.timestamp().replace(tzinfo=timezone.utc)
+            try:
+                timestamp = key.timestamp().replace(tzinfo=timezone.utc)
+            except OverflowError:
+                timestamp = datetime.fromtimestamp(0, tz=timezone.utc)
 
         regentry = RegistryEntry(timestamp=timestamp,
                                  parent_key=parent,
@@ -188,7 +194,7 @@ def walk_registry(key: RegistryParse.NKRecord, mount_point: str = None, recovere
                 gen_values = key.values_list().values()
                 while True:
                     try:
-                        value: RegistryParse.VKRecord = next(gen_values)
+                        value = next(gen_values)
                     except StopIteration:
                         break
                     except (RegistryParse.ParseException, struct.error) as e:
@@ -207,7 +213,10 @@ def walk_registry(key: RegistryParse.NKRecord, mount_point: str = None, recovere
                         name = '(decode error)'
                     if name == '':
                         continue
-                    raw_content = value.raw_data().hex()
+                    try:
+                        raw_content = value.raw_data().hex()
+                    except RegistryParse.RegistryStructureDoesNotExist:
+                        raw_content = '(not exists error)'
                     content, rtype = get_value_content(value)
 
                     regentry = RegistryEntry(timestamp=timestamp,
@@ -220,7 +229,7 @@ def walk_registry(key: RegistryParse.NKRecord, mount_point: str = None, recovere
                                              deleted=recovered)
 
                     yield regentry
-            except struct.error:
+            except struct.error as e:
                 if not recovered:
                     _logger.warning(f'Error while parsing values from {path}/{name}: {str(e)}')
 

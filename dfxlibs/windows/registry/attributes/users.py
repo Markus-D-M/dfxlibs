@@ -62,24 +62,24 @@ class User:
 def users(self: 'WindowsRegistry') -> List[User]:
     key_profiles = 'SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList'
     key_users = 'SAM\\SAM\\Domains\\Account\\Users'
-    users = {}
+    user_list = {}
     user_prefix = 'S-1-5-21'
     for key_sid in self._open(key_profiles).subkeys():
         sid: str = key_sid.name()
-        users[sid] = {'profile_path': key_sid.value('ProfileImagePath').value(), 'sid': sid}
+        user_list[sid] = {'profile_path': key_sid.value('ProfileImagePath').value(), 'sid': sid}
         if sid.startswith('S-1-5-21-'):
             user_prefix, rid = sid.rsplit('-', 1)
-            users[sid]['rid'] = int(rid)
+            user_list[sid]['rid'] = int(rid)
         try:
-            users[key_sid.name()] = {'Guid': key_sid.value('Guid').value()}
+            user_list[key_sid.name()] = {'Guid': key_sid.value('Guid').value()}
         except Registry.RegistryValueNotFoundException:
             pass
     for name in self._open(key_users + '\\Names').subkeys():
         rid = name.value('(default)').value_type()
         sid = f'{user_prefix}-{rid}'
-        if sid not in users:
-            users[sid] = {'rid': rid, 'sid': sid}
-        users[sid]['name'] = name.name()
+        if sid not in user_list:
+            user_list[sid] = {'rid': rid, 'sid': sid}
+        user_list[sid]['name'] = name.name()
     for user in self._open(key_users).subkeys():
         if user.name() == 'Names':
             continue
@@ -87,17 +87,17 @@ def users(self: 'WindowsRegistry') -> List[User]:
         sid = f'{user_prefix}-{rid}'
         f = user.value('F').value()
         t_lockout, t_creation, t_lastlogin, logins = unpack('8xQ8xQ8xQ18xH', f[:6 * 8 + 18 + 2])
-        users[sid]['login_count'] = logins
+        user_list[sid]['login_count'] = logins
         try:
-            users[sid]['lockout'] = filetime_to_dt(t_lockout)
+            user_list[sid]['lockout'] = filetime_to_dt(t_lockout)
         except ValueError:
             pass
         try:
-            users[sid]['created'] = filetime_to_dt(t_creation)
+            user_list[sid]['created'] = filetime_to_dt(t_creation)
         except ValueError:
             pass
         try:
-            users[sid]['last_login'] = filetime_to_dt(t_lastlogin)
+            user_list[sid]['last_login'] = filetime_to_dt(t_lastlogin)
         except ValueError:
             pass
-    return [User(**users[sid]) for sid in users]
+    return [User(**users[sid]) for sid in user_list]
