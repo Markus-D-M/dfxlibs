@@ -13,13 +13,14 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 """
-
+import datetime
 import logging
 
 from dfxlibs.windows.registry.analysis.sam import SAM
 from dfxlibs.windows.registry.analysis.system import SYSTEM
 from dfxlibs.windows.registry.analysis.security import SECURITY
 from dfxlibs.windows.registry.analysis.software import SOFTWARE
+from dfxlibs.windows.registry.analysis.user import USER
 from dfxlibs.cli.arguments import register_argument
 from dfxlibs.cli.environment import env
 from dfxlibs.windows.registry.registryentry import RegistryEntry
@@ -30,8 +31,8 @@ from dfxlibs.general.helpers.excelwriter import SheetHeader, ExcelList
 _logger = logging.getLogger(__name__)
 
 
-@register_argument('-asi', '--analyze_sys_infos', action='store_true',
-                   help='list multiple system information', group_id='analyze')
+@register_argument('-aui', '--analyze_user_infos', action='store_true',
+                   help='list multiple user information', group_id='analyze')
 def sysinfo():
     # for windows
     image = env['image']
@@ -44,8 +45,6 @@ def sysinfo():
     _logger.info('retrieving system information')
 
     result = ExcelList()
-    os_info_result = []
-    net_info_result = []
     for partition in image.partitions(part_name=part, only_with_filesystem=True):
 
         try:
@@ -58,30 +57,32 @@ def sysinfo():
             env['globals']['sam'] = SAM(sqlite_reg_cur, env['globals']['system'].boot_key)
             env['globals']['security'] = SECURITY(sqlite_reg_cur, env['globals']['system'].boot_key)
             env['globals']['software'] = SOFTWARE(sqlite_reg_cur)
+            env['globals']['user'] = USER(sqlite_reg_cur)
         except ValueError:
             continue
 
-        os_infos = get_os_infos(sqlite_reg_cur)
-        for name in os_infos:
-            os_info_result.append((name, os_infos[name]))
+        user = get_user(sqlite_reg_cur)
+        for sid, user_info in user.items():
+            user_name = ''
+            info_list = [('SID', sid)]
+            for k, v in user_info.items():
+                if type(v) is datetime.datetime:
+                    v = v.isoformat()
+                if k == 'User':
+                    info_list.append((k, v))
+                    user_name = v
+                elif k == 'Hashcat' and type(v) is list:
+                    info_list.append((k, '\n'.join([f'Mode: {i["mode"]}; Hash: {i["hash"]}' for i in v])))
+                elif type(v) is list:
+                    info_list.append((k, '\n'.join(v)))
+                else:
+                    info_list.append((k, v))
+            if user_name:
+                result.add_section(f'User {user_name}', info_list)
+            else:
+                result.add_section(f'User {sid}', info_list)
 
-        net_infos = get_network_devices(sqlite_reg_cur)
-        for adapter_guid, adapter_info in net_infos.items():
-            if 'IPAddress' not in adapter_info or adapter_info['IPAddress'] in ['', '0.0.0.0']:
-                # adapters with active ip only
-                continue
-            net_info_result.append(('Adapter Name:', adapter_info['Name']))
-            net_info_result.append(('GUID:', adapter_guid))
-            net_info_result.append(('DHCP:', 'yes' if adapter_info['DHCP'] else 'no'))
-            net_info_result.append(('IP Address:', adapter_info['IPAddress']))
-            net_info_result.append(('Subnet Mask:', adapter_info['SubnetMask']))
-            if 'DefaultGateway' in adapter_info:
-                net_info_result.append(('Default Gateway:', adapter_info['DefaultGateway']))
-            net_info_result.append(('', ''))
-
-    result.add_section('Operating System Information', os_info_result)
-    result.add_section('Active Network Devices', net_info_result)
     header = SheetHeader()
-    header.title = 'System Information'
-    header.description = 'List multiple different system information'
-    env['results']['SysInfo'] = [header, result]
+    header.title = 'User Information'
+    header.description = 'List multiple different user information'
+    env['results']['UserInfo'] = [header, result]

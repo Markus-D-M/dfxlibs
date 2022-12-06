@@ -102,10 +102,16 @@ class SECURITY(DefaultClass):
                 user_list[sid]['Full Name'] = nl_record.full_name
             if self.is_pre_vista:
                 user_list[sid]['MS Cache V1'] = nl_record.ms_cache.hex()
+                hashcat_mode = 1100
             else:
                 user_list[sid]['MS Cache V2'] = nl_record.ms_cache.hex()
+                hashcat_mode = 2100
 
-            user_list[sid]['Hashcat'] = nl_record.get_hashcat_row(self.domain_cache.iteration_count)
+            hashcat = {'mode': hashcat_mode, 'hash': nl_record.get_hashcat_row(self.domain_cache.iteration_count)}
+            try:
+                user_list[sid]['Hashcat'].append(hashcat)
+            except KeyError:
+                user_list[sid]['Hashcat'] = [hashcat]
         return user_list
 
     @property

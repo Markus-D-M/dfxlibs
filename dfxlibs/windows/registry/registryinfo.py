@@ -43,6 +43,8 @@ def get_user(db_reg_cur: 'sqlite3.Cursor') -> Dict[str, Dict[str, str]]:
 
     user_list = env['globals']['security'].get_user_infos(user_list)
 
+    user_list = env['globals']['user'].get_user_infos(user_list)
+
     return user_list
 
 

@@ -42,10 +42,11 @@ class ExcelWriter:
             'title': {'bold': True, 'font_size': 18},
             'description': {'text_wrap': True, 'valign': 'vcenter'},
             'section_header': {'bg_color': '#004b76', 'font_color': 'white', 'bold': True},
-            'list_item_name': {'bold': True},
+            'list_item_name': {'bold': True, 'valign': 'top'},
             'list_item_value': {'align': 'left'},
             'datetime': {'num_format': 'yyyy-mm-dd hh:mm:ss.000', 'align': 'left'},
-            'timedelta': {'num_format': '[h]:mm:ss', 'align': 'left'}
+            'timedelta': {'num_format': '[h]:mm:ss', 'align': 'left'},
+            'textwrap': {'text_wrap': True}
         }
         self.current_row = 0
         self.current_sheet_name = 'Sheet 1'
@@ -150,6 +151,8 @@ class ExcelWriter:
             cell_format = self.get_format(*default_format, 'datetime')
         elif type(content) is datetime.timedelta:
             cell_format = self.get_format(*default_format, 'timedelta')
+        elif type(content) is str and '\n' in content:
+            cell_format = self.get_format(*default_format, 'textwrap')
         else:
             cell_format = self.get_format(*default_format)
         sheet.write(row, col, content, cell_format)

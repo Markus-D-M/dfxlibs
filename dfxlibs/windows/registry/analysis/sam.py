@@ -74,6 +74,26 @@ class SAM(DefaultClass):
             for i in range(0, len(bit_str), 7)]  # split every 7 bits and append an odd parity bit
         return bytes(key_bytes)  # convert the resulting 8 one byte values to bytes and append es round_key
 
+    def _decrypt_hash_pre_vista(self, crypted_hash: bytes, bytes_rid: bytes, hashed_boot_key: bytes, md5_salt: bytes):
+        des1 = DES.new(self._expand_des_key(bytes_rid + bytes_rid[:3]), mode=DES.MODE_ECB)
+        des2 = DES.new(self._expand_des_key(bytes_rid[3:] + bytes_rid + bytes_rid[:2]),
+                       mode=DES.MODE_ECB)
+        rc4_key = MD5.new(hashed_boot_key[:0x10] + bytes_rid + md5_salt).digest()
+        key = ARC4.new(rc4_key).decrypt(crypted_hash)
+        hash_decrypted = des1.decrypt(key[:8]) + des2.decrypt(key[8:])
+        return hash_decrypted
+
+    def _decrypt_hash(self, crypted_hash: bytes, bytes_rid: bytes, hashed_boot_key: bytes):
+        des1 = DES.new(self._expand_des_key(bytes_rid + bytes_rid[:3]), mode=DES.MODE_ECB)
+        des2 = DES.new(self._expand_des_key(bytes_rid[3:] + bytes_rid + bytes_rid[:2]),
+                       mode=DES.MODE_ECB)
+        salt = crypted_hash[0x08:0x18]
+        data = crypted_hash[0x18:]
+        aes = AES.new(hashed_boot_key[:0x10], mode=AES.MODE_CBC, IV=salt)
+        key = aes.decrypt(data)
+        hash_decrypted = des1.decrypt(key[:8]) + des2.decrypt(key[8:16])
+        return hash_decrypted
+
     def get_user_infos(self, user_list=None):
         if user_list is None:
             user_list = dict()
@@ -114,9 +134,18 @@ class SAM(DefaultClass):
                 user_list[user_sid] = {}
             if sam_user.name == 'F':
                 user_f = (UserF(sam_user.get_real_value()))
-                user_list[user_sid]['Last Logon'] = user_f.last_logon
-                user_list[user_sid]['Last Password Change'] = user_f.last_set_password
-                user_list[user_sid]['Last Failed Login'] = user_f.last_incorrect_password
+                if user_f.last_logon.timestamp() > 0:
+                    user_list[user_sid]['Last Logon'] = user_f.last_logon
+                else:
+                    user_list[user_sid]['Last Logon'] = 'never'
+                if user_f.last_set_password.timestamp() > 0:
+                    user_list[user_sid]['Last Password Change'] = user_f.last_set_password
+                else:
+                    user_list[user_sid]['Last Password Change'] = 'never'
+                if user_f.last_incorrect_password.timestamp() > 0:
+                    user_list[user_sid]['Last Failed Login'] = user_f.last_incorrect_password
+                else:
+                    user_list[user_sid]['Last Failed Login'] = 'never'
                 user_list[user_sid]['Failed Login Count'] = user_f.invalid_pw_count
                 user_list[user_sid]['Successful Login Count'] = user_f.logon_count
             elif sam_user.name == 'V':
@@ -126,45 +155,57 @@ class SAM(DefaultClass):
                         user_list[user_sid]['User V'] = user_v.user
                 except KeyError:
                     user_list[user_sid]['User'] = user_v.user
-                user_list[user_sid]['User Comment'] = user_v.user_comment
-                user_list[user_sid]['Comment'] = user_v.comment
+                if user_v.user_comment:
+                    user_list[user_sid]['User Comment'] = user_v.user_comment
+                if user_v.comment:
+                    user_list[user_sid]['Comment'] = user_v.comment
                 try:
                     if user_v.profile_path and user_list[user_sid]['Profile Path'] != user_v.profile_path:
-                        user_list[user_sid]['Profile Path V'] = user_v.profile_pathuser
+                        user_list[user_sid]['Profile Path V'] = user_v.profile_path
                 except KeyError:
                     user_list[user_sid]['Profile Path'] = user_v.profile_path
 
                 des1 = DES.new(self._expand_des_key(bytes_rid + bytes_rid[:3]), mode=DES.MODE_ECB)
                 des2 = DES.new(self._expand_des_key(bytes_rid[3:] + bytes_rid + bytes_rid[:2]),
                                mode=DES.MODE_ECB)
-                ntpw = b"NTPASSWORD\0"
-                lmpw = b"LMPASSWORD\0"
 
                 if user_v.raw_nt_hash[2] == 1:
+
                     if len(user_v.raw_nt_hash) == 20:
                         nt_hash = user_v.raw_nt_hash[0x04:0x14]
-                        rc4_key = MD5.new(hashed_boot_key[:0x10] + bytes_rid + ntpw).digest()
-                        key = ARC4.new(rc4_key).decrypt(nt_hash)
-                        user_list[user_sid]['NTHash'] = (des1.decrypt(key[:8]) + des2.decrypt(key[8:])).hex()
+                        nt_hash_decrypted = self._decrypt_hash_pre_vista(nt_hash, bytes_rid,
+                                                                         hashed_boot_key, b"NTPASSWORD\0")
+                        if nt_hash_decrypted:
+                            user_list[user_sid]['NTHash'] = nt_hash_decrypted.hex()
+                            hashcat = {'mode': 1000,
+                                       'hash': nt_hash_decrypted.hex()}
+                            try:
+                                user_list[user_sid]['Hashcat'].append(hashcat)
+                            except KeyError:
+                                user_list[user_sid]['Hashcat'] = [hashcat]
                     if len(user_v.raw_lm_hash) == 20:
                         lm_hash = user_v.raw_lm_hash[0x04:0x14]
-                        rc4_key = MD5.new(hashed_boot_key[:0x10] + bytes_rid + lmpw).digest()
-                        key = ARC4.new(rc4_key).decrypt(lm_hash)
-                        user_list[user_sid]['LMHash'] = (des1.decrypt(key[:8]) + des2.decrypt(key[8:])).hex()
+                        lm_hash_decrypted = self._decrypt_hash_pre_vista(lm_hash, bytes_rid,
+                                                                         hashed_boot_key, b"LMPASSWORD\0")
+                        if lm_hash_decrypted:
+                            user_list[user_sid]['LMHash'] = lm_hash_decrypted.hex()
+                            hashcat = [{'mode': 3000,
+                                        'hash': lm_hash_decrypted.hex()[:16]},
+                                       {'mode': 3000,
+                                        'hash': lm_hash_decrypted.hex()[16:]}]
+                            try:
+                                user_list[user_sid]['Hashcat'].extend(hashcat)
+                            except KeyError:
+                                user_list[user_sid]['Hashcat'] = hashcat
                 else:
                     # AES
                     if len(user_v.raw_lm_hash) > 24:
-                        print(user_v.raw_lm_hash)
-                        lm_salt = user_v.raw_lm_hash[0x08:0x18]
-                        lm_data = user_v.raw_lm_hash[0x18:]
-                        aes = AES.new(hashed_boot_key[:0x10], mode=AES.MODE_CBC, IV=lm_salt)
-                        key = aes.decrypt(lm_data)
-                        user_list[user_sid]['LMHash'] = (des1.decrypt(key[:8]) + des2.decrypt(key[8:16])).hex()
-                    nt_salt = user_v.raw_nt_hash[0x08:0x18]
-                    nt_data = user_v.raw_nt_hash[0x18:]
-                    aes = AES.new(hashed_boot_key[:0x10], mode=AES.MODE_CBC, IV=nt_salt)
-                    key = aes.decrypt(nt_data)
-                    user_list[user_sid]['NTHash'] = (des1.decrypt(key[:8]) + des2.decrypt(key[8:16])).hex()
+                        lm_hash_decrypted = self._decrypt_hash(user_v.raw_lm_hash, bytes_rid, hashed_boot_key)
+                        if lm_hash_decrypted:
+                            user_list[user_sid]['LMHash'] = lm_hash_decrypted.hex()
+                    nt_hash_decrypted = self._decrypt_hash(user_v.raw_nt_hash, bytes_rid, hashed_boot_key)
+                    if nt_hash_decrypted:
+                        user_list[user_sid]['NTHash'] = nt_hash_decrypted.hex()
         return user_list
 
     def _get_hashed_boot_key(self):
