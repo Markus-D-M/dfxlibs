@@ -1,6 +1,6 @@
 # coding: utf-8
 """
-   support ewf file format
+   support qcow2 file format
 
    Copyright 2022 Markus D (mar.d@gmx.net)
 

@@ -124,7 +124,9 @@ class SAM(DefaultClass):
                                                                           db_like('parent_key',
                                                                                   'HKLM\\SAM\\SAM\\Domains\\'
                                                                                   'Account\\Users\\%'),
-                                                                          db_in('name', ['F', 'V'])))
+                                                                          db_in('name', ['F', 'V', 'UserPasswordHint']
+                                                                                )
+                                                                      ))
         for sam_user in sam_users:
             _, rid = sam_user.parent_key.rsplit('\\', 1)
             int_rid = int(rid, 16)
@@ -132,7 +134,10 @@ class SAM(DefaultClass):
             user_sid = f'{machine_sid}-{int_rid}'
             if user_sid not in user_list:
                 user_list[user_sid] = {}
-            if sam_user.name == 'F':
+            if sam_user.name == 'UserPasswordHint':
+                # need demo data
+                pass
+            elif sam_user.name == 'F':
                 user_f = (UserF(sam_user.get_real_value()))
                 if user_f.last_logon.timestamp() > 0:
                     user_list[user_sid]['Last Logon'] = user_f.last_logon
@@ -164,10 +169,6 @@ class SAM(DefaultClass):
                         user_list[user_sid]['Profile Path V'] = user_v.profile_path
                 except KeyError:
                     user_list[user_sid]['Profile Path'] = user_v.profile_path
-
-                des1 = DES.new(self._expand_des_key(bytes_rid + bytes_rid[:3]), mode=DES.MODE_ECB)
-                des2 = DES.new(self._expand_des_key(bytes_rid[3:] + bytes_rid + bytes_rid[:2]),
-                               mode=DES.MODE_ECB)
 
                 if user_v.raw_nt_hash[2] == 1:
 

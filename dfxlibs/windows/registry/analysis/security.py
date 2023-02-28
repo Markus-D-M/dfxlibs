@@ -89,6 +89,8 @@ class SECURITY(DefaultClass):
     def get_user_infos(self, user_list=None):
         if user_list is None:
             user_list = dict()
+        if self.domain_cache is None:
+            return user_list
         domain_sid = self.domain_sid
         for nl_record in self.domain_cache.nl_records:
             sid = f'{domain_sid}-{nl_record.rid}'
@@ -128,7 +130,7 @@ class SECURITY(DefaultClass):
         nl_records = []
         nlkm_secret = self.get_lsa_secret('NL$KM')
         if nlkm_secret is None:
-            _logger.warning('unable to retrieve NL$KM secret')
+            _logger.info('no NL$KM secret')
             return
         for cache_entry in cache_entries:
             if cache_entry.name == "NL$Control":
@@ -296,31 +298,52 @@ class NLRecord(DefaultClass):
         # 4 byte aligned
         self.ms_cache = decrypted_data[:16]
         offset = 0x48
-        self.user = decrypted_data[offset:offset + self._len_user].decode('utf16')
+        try:
+            self.user = decrypted_data[offset:offset + self._len_user].decode('utf16')
+        except UnicodeDecodeError:
+            self.user = ''
         offset += self._len_user
         if offset % 4:
             offset += (4 - (offset % 4))
-        self.domain_name = decrypted_data[offset:offset + self._len_domain_name].decode('utf16')
+        try:
+            self.domain_name = decrypted_data[offset:offset + self._len_domain_name].decode('utf16')
+        except UnicodeDecodeError:
+            self.domain_name = ''
         offset += self._len_domain_name
         if offset % 4:
             offset += (4 - (offset % 4))
-        self.dns_domain_name = decrypted_data[offset:offset + self._len_dns_domain_name].decode('utf16')
+        try:
+            self.dns_domain_name = decrypted_data[offset:offset + self._len_dns_domain_name].decode('utf16')
+        except UnicodeDecodeError:
+            self.dns_domain_name = ''
         offset += self._len_dns_domain_name
         if offset % 4:
             offset += (4 - (offset % 4))
-        self.upn = decrypted_data[offset:offset + self._len_upn].decode('utf16')
+        try:
+            self.upn = decrypted_data[offset:offset + self._len_upn].decode('utf16')
+        except UnicodeDecodeError:
+            self.upn = ''
         offset += self._len_upn
         if offset % 4:
             offset += (4 - (offset % 4))
-        self.effective_name = decrypted_data[offset:offset + self._len_effective_name].decode('utf16')
+        try:
+            self.effective_name = decrypted_data[offset:offset + self._len_effective_name].decode('utf16')
+        except UnicodeDecodeError:
+            self.effective_name = ''
         offset += self._len_effective_name
         if offset % 4:
             offset += (4 - (offset % 4))
-        self.full_name = decrypted_data[offset:offset + self._len_full_name].decode('utf16')
+        try:
+            self.full_name = decrypted_data[offset:offset + self._len_full_name].decode('utf16')
+        except UnicodeDecodeError:
+            self.full_name = ''
         offset += self._len_full_name
         if offset % 4:
             offset += (4 - (offset % 4))
-        self.home_directory = decrypted_data[offset:offset + self._len_home_directory].decode('utf16')
+        try:
+            self.home_directory = decrypted_data[offset:offset + self._len_home_directory].decode('utf16')
+        except UnicodeDecodeError:
+            self.home_directory = ''
         offset += self._len_home_directory
         if offset % 4:
             offset += (4 - (offset % 4))

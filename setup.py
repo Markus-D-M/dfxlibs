@@ -30,6 +30,7 @@ setup(
         "libscca-python",
         "libbde-python",
         "libevtx-python",
-        "pycryptodome"
+        "pycryptodome",
+        "signify"
     ]
 )

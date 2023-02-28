@@ -20,7 +20,8 @@ import logging
 
 from dfxlibs.general.baseclasses.defaultclass import DefaultClass
 from dfxlibs.windows.registry.registryentry import RegistryEntry
-from dfxlibs.general.helpers.db_filter import db_and, db_eq, db_like
+from dfxlibs.general.helpers.db_filter import db_and, db_eq, db_like, db_or
+from dfxlibs.windows.registry.registryinfo import Autorun
 
 _logger = logging.getLogger(__name__)
 
@@ -31,6 +32,34 @@ class USER(DefaultClass):
         if check_key is None:
             raise ValueError('no user hive found')
         self._db_reg_cur = db_reg_cur
+
+    def get_autoruns(self, autoruns=None):
+        if autoruns is None:
+            autoruns = list()
+
+        reg_runkey: Generator[RegistryEntry] = RegistryEntry.db_select(self._db_reg_cur,
+                                                                       db_filter=db_or(db_like('parent_key',
+                                                                                               'HKU\\%\\Software\\'
+                                                                                               'Microsoft\\Windows\\'
+                                                                                               'CurrentVersion'
+                                                                                               '\\Run'),
+                                                                                       db_like('parent_key',
+                                                                                               'HKU\\%\\Software\\'
+                                                                                               'Microsoft\\Windows\\'
+                                                                                               'CurrentVersion\\RunOnce'
+                                                                                               ),
+                                                                                       db_eq('parent_key',
+                                                                                             'HKU\\%\\Software\\'
+                                                                                             'Microsoft\\Windows\\'
+                                                                                             'CurrentVersion\\Policies'
+                                                                                             '\\Explorer\\Run')
+                                                                                       ))
+        for run in reg_runkey:
+            _, user, _ = run.parent_key.split('\\', maxsplit=2)
+            ar = Autorun(description=run.name, commandline=run.get_real_value(),
+                         source=run.parent_key + '\\' + run.name, ar_type='Registry RunKey', user=user)
+            autoruns.append(ar)
+        return autoruns
 
     def get_user_infos(self, user_list=None):
         if user_list is None:

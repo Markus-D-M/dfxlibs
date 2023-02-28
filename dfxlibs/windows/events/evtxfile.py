@@ -25,6 +25,7 @@ from lxml.etree import XMLSyntaxError
 from .xml_to_dict import xml_to_dict
 from .event import Event
 from Evtx.BinaryParser import OverrunBufferException, ParseException
+from Evtx.Views import UnexpectedElementException
 import pyevtx
 import re
 
@@ -70,7 +71,8 @@ def evtx_carver(current_data: bytes, current_offset: int) -> Iterator[Union[int,
         try:
             evt_tree: etree = record.lxml()
         except (OverrunBufferException, UnicodeDecodeError, KeyError, ParseException,
-                XMLSyntaxError, AttributeError, IndexError, RecursionError):
+                XMLSyntaxError, AttributeError, IndexError, RecursionError, RuntimeError,
+                UnexpectedElementException):
             # Parse errors for partial destroyed chunks -> ignore records
             continue
         # remove namespaces

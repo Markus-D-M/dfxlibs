@@ -25,7 +25,8 @@ from datetime import datetime, timezone
 from dfxlibs.windows.helpers import filetime_to_dt
 from dfxlibs.general.baseclasses.defaultclass import DefaultClass
 from dfxlibs.windows.registry.registryentry import RegistryEntry
-from dfxlibs.general.helpers.db_filter import db_and, db_eq, db_like, db_in
+from dfxlibs.general.helpers.db_filter import db_and, db_eq, db_like, db_or
+from dfxlibs.windows.registry.registryinfo import Autorun
 
 _logger = logging.getLogger(__name__)
 
@@ -36,6 +37,35 @@ class SOFTWARE(DefaultClass):
         if check_key is None:
             raise ValueError('no software hive found')
         self._db_reg_cur = db_reg_cur
+
+    def get_autoruns(self, autoruns=None):
+        if autoruns is None:
+            autoruns = list()
+
+        reg_runkey: Generator[RegistryEntry] = RegistryEntry.db_select(self._db_reg_cur,
+                                                                       db_filter=db_or(db_eq('parent_key',
+                                                                                             'HKLM\\SOFTWARE\\Microsoft'
+                                                                                             '\\Windows\\CurrentVersion'
+                                                                                             '\\Run'),
+                                                                                       db_eq('parent_key',
+                                                                                             'HKLM\\SOFTWARE\\Microsoft'
+                                                                                             '\\Windows\\CurrentVersion'
+                                                                                             '\\RunOnce'),
+                                                                                       db_eq('parent_key',
+                                                                                             'HKLM\\SOFTWARE\\Microsoft'
+                                                                                             '\\Windows\\CurrentVersion'
+                                                                                             '\\RunOnceEx'),
+                                                                                       db_eq('parent_key',
+                                                                                             'HKLM\\SOFTWARE\\Microsoft'
+                                                                                             '\\Windows\\CurrentVersion'
+                                                                                             '\\Policies\\Explorer\\'
+                                                                                             'Run')
+                                                                                       ))
+        for run in reg_runkey:
+            ar = Autorun(description=run.name, commandline=run.get_real_value(),
+                         source=run.parent_key + '\\' + run.name, ar_type='Registry RunKey')
+            autoruns.append(ar)
+        return autoruns
 
     def get_user_infos(self, user_list=None):
         if user_list is None:

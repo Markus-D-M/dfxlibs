@@ -101,6 +101,7 @@ def prepare_registry() -> None:
             _, sid = user_profile.parent_key.rsplit('\\', 1)
             _, folder = user_profile.get_real_value().split('\\', 1)
             profile_folder = '/' + folder.replace('\\', '/')
+            _logger.info(f'prepare user registry for user {sid}')
             hives = [
                 {'filename': 'NTUSER.DAT', 'filepath': profile_folder,
                  'mountpoint': f'HKU\\{sid}'},
@@ -108,8 +109,8 @@ def prepare_registry() -> None:
                  'mountpoint': f'HKU\\{sid}_Classes'}]
             for hive in hives:
                 hive_file = File.db_select_one(sqlite_files_cur, db_and(
-                        db_eq('name', hive['filename']),
-                        db_eq('parent_folder', hive['filepath']),
+                        db_like('name', hive['filename']),
+                        db_like('parent_folder', hive['filepath']),
                         db_eq('allocated', 1),
                         db_eq('source', 'filesystem')
                     ))

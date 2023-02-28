@@ -132,7 +132,11 @@ class File(DatabaseObject, DefaultClass):
             return
 
         if self._as_directory is None:
-            self._as_directory = self._tsk3_file.as_directory()
+            try:
+                self._as_directory = self._tsk3_file.as_directory()
+            except OSError:
+                _logger.warning(f'cannot open {self.source}:{self.full_name} as directory')
+                return
         for entry in self._as_directory:
             file = File(entry, self._parent_partition)
             file.source = self.source
@@ -149,7 +153,11 @@ class File(DatabaseObject, DefaultClass):
         """
         self._parent_partition = partition
         if self.source == 'filesystem':
-            self._tsk3_file = partition.filesystem.open_meta(self.meta_addr)
+            try:
+                self._tsk3_file = partition.filesystem.open_meta(self.meta_addr)
+            except OSError:
+                _logger.warning(f'cannot open {self.source}:{self.full_name}')
+                raise OSError
         elif self.source.startswith('vss#'):
             _, store_id = self.source.split('#', 1)
             store_id = int(store_id)

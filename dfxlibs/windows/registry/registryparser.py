@@ -54,7 +54,7 @@ def get_value_content(vk: RegistryParse.VKRecord) -> (any, str):
     try:
         try:
             content = vk.data()
-        except RegistryParse.RegistryStructureDoesNotExist:
+        except (RegistryParse.RegistryStructureDoesNotExist, OverflowError):
             content = '(not exists error)'
         if rtype.startswith('Unknown'):
             raise RegistryParse.UnknownTypeException('')

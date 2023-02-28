@@ -168,6 +168,8 @@ class USNRecordV2(DatabaseObject, DefaultClass):
 
     @classmethod
     def from_raw(cls, raw: bytes):
+        if len(raw) < 60:
+            raise AttributeError(f'Invalid Entry Length')
         file_addr, file_seq, par_addr, par_seq, usn, filetime, reason, source_info, sec_id, file_attr, fn_len, \
             fn_offset = unpack('<LxxHLxxHQQIIIIHH', raw[8:60])
         if filetime < EPOCH_AS_FILETIME or filetime > MAX_FILETIME:

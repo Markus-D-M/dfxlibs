@@ -77,7 +77,8 @@ def get_image_files() -> List[str]:
             image_files = []
         return image_files
     elif len(args.image) == 1 and '*' in args.image[0]:
-        image_files = [f for f in glob.glob(args.image[0]) if f[-4:].lower() not in ['.txt', '.pdf', 'html', '.xml']]
+        image_files = [f for f in glob.glob(args.image[0]) if f[-4:].lower() not in ['.txt', '.pdf', 'html', '.xml',
+                                                                                     'xmet']]
         environment.env['config']['image_files'] = image_files
     else:
         image_files = args.image

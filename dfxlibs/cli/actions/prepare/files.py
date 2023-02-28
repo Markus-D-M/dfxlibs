@@ -221,22 +221,34 @@ def hash_files() -> None:
             file_data = ''
             if 'md5' in hash_algorithms and file.md5 == '':
                 if not file_data:
-                    file.open(partition)
+                    try:
+                        file.open(partition)
+                    except OSError:
+                        continue
                     file_data = file.read()
                 file.md5 = hashlib.md5(file_data).hexdigest()
             if 'sha1' in hash_algorithms and file.sha1 == '':
                 if not file_data:
-                    file.open(partition)
+                    try:
+                        file.open(partition)
+                    except OSError:
+                        continue
                     file_data = file.read()
                 file.sha1 = hashlib.sha1(file_data).hexdigest()
             if 'sha256' in hash_algorithms and file.sha256 == '':
                 if not file_data:
-                    file.open(partition)
+                    try:
+                        file.open(partition)
+                    except OSError:
+                        continue
                     file_data = file.read()
                 file.sha256 = hashlib.sha256(file_data).hexdigest()
             if 'tlsh' in hash_algorithms and file.tlsh == '' and file.size >= 50:
                 if not file_data:
-                    file.open(partition)
+                    try:
+                        file.open(partition)
+                    except OSError:
+                        continue
                     file_data = file.read()
                 file.tlsh = tlsh.hash(file_data)
 
@@ -302,7 +314,10 @@ def file_types() -> None:
 
             # using magic to determine file type
             if file.file_type == '':
-                file.open(partition)
+                try:
+                    file.open(partition)
+                except OSError:
+                    continue
                 try:
                     file.file_type = magic.from_buffer(file.read(2048))
                 except magic.MagicException:
