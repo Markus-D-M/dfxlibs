@@ -43,17 +43,19 @@ stream_handler.setFormatter(logging.Formatter(LOGGING_FORMAT, "%Y-%m-%dT%H:%M:%S
 _logger = logging.getLogger('dfxlibs.cli')
 
 
-def change_log_handler(filename: str = None):
+def change_log_handler(filename: str = None, no_stdout=False):
     """
     Change loghandler to stdout and filename (if given).
 
     :param filename: log filename
+    :param no_stdout: if True, no output to stdout
     :type filename: str
     """
     root_logger = logging.getLogger()
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
-    root_logger.addHandler(stream_handler)
+    if not no_stdout:
+        root_logger.addHandler(stream_handler)
     if filename is not None:
         file_log_handler = logging.FileHandler(filename)
         file_log_handler.setFormatter(logging.Formatter(LOGGING_FORMAT, "%Y-%m-%dT%H:%M:%S%z"))
@@ -97,24 +99,44 @@ def meta_folder():
     Config from metafolder is stored in env['config'].
 
     :raise IOError: if meta_folder does not exist and --meta_create flag is not set.
+    :raise AttributeError: if meta_folder is not given
     """
     args: argparse.Namespace = environment.env['args']
-    folder = args.meta_folder
-    if not isdir(folder):
-        if args.meta_create:
-            makedirs(folder, exist_ok=True)
-        else:
-            raise IOError(f'ERROR: Meta information folder {repr(folder)} does not exist. '
-                          'Use --meta_create flag or create it manually')
-    if not isdir(join(folder, 'logs')):
-        mkdir(join(folder, 'logs'))
-    change_log_handler(join(folder, 'logs', f'{datetime.date.today().strftime("%Y-%m-%d")}_log.txt'))
-    environment.env['meta_folder'] = folder
-    try:
-        with open(join(environment.env['meta_folder'], 'config.json'), 'r') as f:
-            environment.env['config'] = loads(f.read())
-    except (FileNotFoundError, JSONDecodeError):
-        environment.env['config'] = {}
+    if args.meta_folder:
+        meta = args.meta_folder
+        if not isdir(meta):
+            if args.meta_create:
+                makedirs(meta, exist_ok=True)
+            else:
+                raise IOError(f'ERROR: Meta information folder {repr(meta)} does not exist. '
+                              'Use --meta_create flag or create it manually')
+        folders = [meta]
+    elif args.scan_dir:
+        scan = args.scan_dir
+        if not isdir(scan):
+            raise IOError(f'ERROR: Scan folder {repr(scan)} does not exist. ')
+        folders = []
+        candidates = glob.glob(scan+'/**/config.json', recursive=True)
+        for candidate in candidates:
+            with open(candidate, 'r') as f:
+                data = f.read()
+            if data.startswith('{"image_files": ['):
+                folders.append(candidate.replace('config.json', ''))
+    else:
+        raise AttributeError()
+
+    for folder in folders:
+        if not isdir(join(folder, 'logs')):
+            mkdir(join(folder, 'logs'))
+        change_log_handler(join(folder, 'logs', f'{datetime.date.today().strftime("%Y-%m-%d")}_log.txt'),
+                           no_stdout=len(folders) > 1)
+        environment.env['meta_folder'] = folder
+        try:
+            with open(join(environment.env['meta_folder'], 'config.json'), 'r') as f:
+                environment.env['config'] = loads(f.read())
+        except (FileNotFoundError, JSONDecodeError):
+            environment.env['config'] = {}
+        yield folder
 
 
 """def parse_arguments():
@@ -132,57 +154,37 @@ def main():
     environment.env['args'] = arguments.arguments.get_argument_parser().parse_args()
 
     try:
-        meta_folder()
+        for _ in meta_folder():
+            _logger.info('Running ' + ' '.join(sys.argv))
+            _logger.info(f'dfxlibs version: {dfxlibs.__version__}')
+            if image_files := get_image_files():
+                environment.env['image'] = dfxlibs.general.image.Image(image_files)
+                _logger.info(f'using image: {image_files}')
+
+            try:
+                arguments.arguments.execute_arguments()
+            except Exception as e:
+                print(e)
+                sys.exit(3)
+
+            if environment.env['results']:
+                makedirs(join(environment.env['meta_folder'], 'reports'), exist_ok=True)
+                filename = join(environment.env['meta_folder'], 'reports',
+                                datetime.datetime.now().strftime('%Y%m%d_%H%M%S') + '_report.xlsx')
+                _logger.info(f'Writing analysis report to {filename}')
+                result_file = ExcelWriter(filename)
+                for result_sheet in environment.env['results']:
+                    result_data = environment.env['results'][result_sheet]
+                    result_file.add_sheet(result_sheet, result_data)
+
+                result_file.close()
+
     except IOError as e:
         print(e)
         sys.exit(1)
-
-    _logger.info('Running ' + ' '.join(sys.argv))
-    _logger.info(f'dfxlibs version: {dfxlibs.__version__}')
-
-    if image_files := get_image_files():
-        environment.env['image'] = dfxlibs.general.image.Image(image_files)
-        _logger.info(f'using image: {image_files}')
-
-    try:
-        arguments.arguments.execute_arguments()
-    except Exception as e:
-        print(e)
-        raise
-        sys.exit(1)
-
-    if environment.env['results']:
-        makedirs(join(environment.env['meta_folder'], 'reports'), exist_ok=True)
-        filename = join(environment.env['meta_folder'], 'reports',
-                        datetime.datetime.now().strftime('%Y%m%d_%H%M%S') + '_report.xlsx')
-        _logger.info(f'Writing analysis report to {filename}')
-        result_file = ExcelWriter(filename)
-        for result_sheet in environment.env['results']:
-            result_data = environment.env['results'][result_sheet]
-            result_file.add_sheet(result_sheet, result_data)
-
-        result_file.close()
-    """if env['args'].analyze:
-        results = {}
-        if 'sessions' in env['args'].analyze:
-            results['sessions'] = dfxlibs.cli.actions.events.get_user_sessions(
-                env['image'], meta_folder=env['meta_folder'], part=env['args'].part)
-        if 'browser_history' in env['args'].analyze:
-            results['browser_history'] = dfxlibs.cli.actions.browser.get_browser_history(
-                env['image'], meta_folder=env['meta_folder'], part=env['args'].part)
-
-        # output results:
-        fname_results = join(env['meta_folder'],
-                             datetime.datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S') + '_analyze.xlsx')
-        writer = dfxlibs.general.helpers.ExcelWriter(fname_results)
-        for sheet in results:
-            writer.write_cells([results[sheet][0]], sheet_name=sheet, offset_col=1, offset_row=1,
-                               default_format=['bg-darkblue-100', 'bold'])
-            writer.write_cells(results[sheet][1:], sheet_name=sheet, offset_col=1, offset_row=2)
-            writer.auto_filter(1, 1, writer.current_row,  len(results[sheet][0]), sheet_name=sheet)
-
-        writer.close()
-    """
+    except AttributeError:
+        print("dfxlibs: error: the following arguments are required: -m / --meta_folder or -s / --scan_folder")
+        sys.exit(2)
 
 
 if __name__ == '__main__':

@@ -143,7 +143,6 @@ class SECURITY(DefaultClass):
             if cache_raw[:2] == b'\0\0':
                 # empty entry
                 continue
-
             nl_record = NLRecord(data=cache_raw, nlkm_secret=nlkm_secret, is_pre_vista=self.is_pre_vista)
             nl_records.append(nl_record)
         self._domain_cache = DomainCache(nl_records, iteration_count=dcc_iteration_count)
@@ -238,7 +237,7 @@ class SECURITY(DefaultClass):
             except ValueError:
                 continue
             if self.is_pre_vista:
-                data = nlkm_key_raw[0x0c:]
+                data = nlkm_key_raw[0x0c+4:]
                 key = self.lsa_keys[b'legacy']
 
                 rounds = len(data) // 8

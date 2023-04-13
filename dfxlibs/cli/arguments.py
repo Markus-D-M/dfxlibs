@@ -76,7 +76,9 @@ class Arguments:
 
 arguments = Arguments()
 arguments.add_group('general', 'General Arguments', 'These parameters are used in all categories.')
-arguments.add_argument('-m', '--meta_folder', required=True, help='folder to store and load meta information',
+arguments.add_argument('-m', '--meta_folder', help='folder to store and load meta information for one image',
+                       group_id='general')
+arguments.add_argument('-s', '--scan_dir', help='folder to scan for meta folders. Used for scan options',
                        group_id='general')
 arguments.add_argument('--meta_create', action='store_true', help='create meta information folder if not exists',
                        group_id='general')
@@ -92,6 +94,7 @@ arguments.add_argument('--part', help='Specify partition for actions like --prep
 arguments.add_group('prepare', 'Preparation', 'These arguments prepare the data from the image for further analysis')
 arguments.add_group('carve', 'Carving', 'These arguments are for different carving options.')
 arguments.add_group('analyze', 'Analyze', 'These arguments are for in-depth analysis of the image.')
+arguments.add_group('scan', 'Scan', 'These arguments are for scanning multiple images for search parameters.')
 arguments.add_argument('--analyze_start', help='Specify a start date in format YYYY-MM-DD for event based analysis '
                                                '(e.g. logins). Only events after or equal the given date are '
                                                'analyzed.', group_id='analyze')

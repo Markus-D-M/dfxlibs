@@ -13,7 +13,7 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 """
-
+import json
 import logging
 
 from dfxlibs.windows.events.event import Event
@@ -144,7 +144,7 @@ def analyze_rdp_sessions() -> None:
 
             if (connection[0][2] != connection[1][2] and connection[1][1] != 'SYSTEM SHUTDOWN') or \
                     (connection[0][3] != connection[1][3] and connection[1][1] != 'SYSTEM SHUTDOWN'):
-                _logger.warning('unexpected connection found: ', connection)
+                _logger.warning('unexpected connection found')
             if lowest_dt is None or lowest_dt > connection[0][0]:
                 lowest_dt = connection[0][0]
             if highest_dt is None or highest_dt < connection[1][0]:
