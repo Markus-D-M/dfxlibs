@@ -21,7 +21,7 @@ import logging
 from dfxlibs.general.baseclasses.defaultclass import DefaultClass
 from dfxlibs.windows.registry.registryentry import RegistryEntry
 from dfxlibs.general.helpers.db_filter import db_and, db_eq, db_like, db_or
-from dfxlibs.windows.registry.registryinfo import Autorun
+from dfxlibs.windows.autoruns import Autorun
 
 _logger = logging.getLogger(__name__)
 

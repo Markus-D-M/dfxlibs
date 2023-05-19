@@ -15,12 +15,13 @@
 """
 
 import sqlite3
-from typing import Optional
+from typing import Optional, List, Generator
 import logging
 
 from dfxlibs.general.baseclasses.defaultclass import DefaultClass
 from dfxlibs.windows.registry.registryentry import RegistryEntry
 from dfxlibs.general.helpers.db_filter import db_and, db_eq
+from dfxlibs.windows.autoruns import Autorun
 
 _logger = logging.getLogger(__name__)
 
@@ -77,3 +78,49 @@ class SYSTEM(DefaultClass):
         bootkey_scrambled = bytes.fromhex(bootkey_scrambled)
         bootkey_perm_matrix = [0x8, 0x5, 0x4, 0x2, 0xb, 0x9, 0xd, 0x3, 0x0, 0x6, 0x1, 0xc, 0xe, 0xa, 0xf, 0x7]
         self._boot_key = bytes([bootkey_scrambled[bootkey_perm_matrix[i]] for i in range(len(bootkey_scrambled))])
+
+    def get_autoruns(self, autoruns=None):
+        if autoruns is None:
+            autoruns = list()
+
+        srv_key = f'HKLM\\SYSTEM\\ControlSet{self.current_control_set:03d}\\Services'
+        reg_services: List[RegistryEntry] = [s for s in
+                                             RegistryEntry.db_select(self._db_reg_cur,
+                                                                     db_filter=db_eq('parent_key', srv_key))
+                                             ]
+        for reg_service in reg_services:
+            srv = {'name': reg_service.name,
+                   'Description': '',
+                   'DisplayName': '',
+                   'ImagePath': '',
+                   'Start': -1,
+                   'Type': -1}
+            service_entry: Generator[RegistryEntry] = \
+                RegistryEntry.db_select(self._db_reg_cur, db_filter=db_and(db_eq('parent_key',
+                                                                                 f'{srv_key}\\{srv["name"]}')))
+            for params in service_entry:
+                for k in srv:
+                    if k == params.name:
+                        srv[k] = params.get_real_value()
+
+            if srv['ImagePath'].startswith('\\??\\'):
+                srv['ImagePath'] = srv['ImagePath'][4:]
+            if srv['ImagePath'].lower().startswith('system32\\drivers'):
+                srv['ImagePath'] = '%SystemRoot%\\' + srv['ImagePath']
+            if srv['ImagePath'].lower().startswith('\\systemroot'):
+                srv['ImagePath'] = '%SystemRoot%' + srv['ImagePath'][11:]
+
+            if '\\svchost.exe ' in srv['ImagePath']:
+                service_dll = RegistryEntry.db_select_one(self._db_reg_cur, db_filter=db_and(
+                    db_eq('parent_key', f'{srv_key}\\{srv["name"]}\\Parameters'),
+                    db_eq('name', 'ServiceDll')))
+                if service_dll:
+                    srv['ServiceDll'] = service_dll.get_real_value()
+            if srv['Start'] in [0, 1, 2]:
+                ar = Autorun(description=srv['name'],
+                             commandline=srv['ServiceDll'] if 'ServiceDll' in srv else srv['ImagePath'],
+                             source=f'{srv_key}\\{srv["name"]}',
+                             ar_type='Registry Service')
+                ar.add_info = f'Service Type: 0x{srv["Type"]:02x}'
+                autoruns.append(ar)
+        return autoruns

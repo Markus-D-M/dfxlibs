@@ -15,18 +15,13 @@
 """
 
 import sqlite3
-from typing import Optional, Generator
-from Crypto.Hash import SHA256, MD5, HMAC
-from Crypto.Cipher import AES, ARC4, DES
-import struct
+from typing import Generator
 import logging
-from datetime import datetime, timezone
 
-from dfxlibs.windows.helpers import filetime_to_dt
 from dfxlibs.general.baseclasses.defaultclass import DefaultClass
 from dfxlibs.windows.registry.registryentry import RegistryEntry
 from dfxlibs.general.helpers.db_filter import db_and, db_eq, db_like, db_or
-from dfxlibs.windows.registry.registryinfo import Autorun
+from dfxlibs.windows.autoruns import Autorun
 
 _logger = logging.getLogger(__name__)
 

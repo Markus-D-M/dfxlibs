@@ -164,7 +164,8 @@ def main():
             try:
                 arguments.arguments.execute_arguments()
             except Exception as e:
-                print(e)
+                import traceback
+                traceback.print_exc()
                 sys.exit(3)
 
             if environment.env['results']:

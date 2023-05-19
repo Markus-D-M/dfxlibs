@@ -31,6 +31,8 @@ setup(
         "libbde-python",
         "libevtx-python",
         "pycryptodome",
-        "signify"
+        "signify",
+        "xmltodict",
+        "lnkparse3"
     ]
 )

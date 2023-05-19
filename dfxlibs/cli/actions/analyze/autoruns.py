@@ -13,7 +13,6 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 """
-import datetime
 import logging
 
 from dfxlibs.windows.registry.analysis.system import SYSTEM
@@ -22,8 +21,7 @@ from dfxlibs.windows.registry.analysis.user import USER
 from dfxlibs.cli.arguments import register_argument
 from dfxlibs.cli.environment import env
 from dfxlibs.windows.registry.registryentry import RegistryEntry
-from dfxlibs.windows.registry.registryinfo import get_os_infos, get_network_devices, \
-    get_user, get_autoruns, Autorun
+from dfxlibs.windows.autoruns import get_autoruns, Autorun
 from dfxlibs.general.helpers.excelwriter import SheetHeader, ExcelTable
 from dfxlibs.general.baseclasses.file import File
 
@@ -64,12 +62,11 @@ def autruns():
             continue
 
         autoruns = get_autoruns(sqlite_file_cur, partition)
-        for ar in autoruns:
-            print(ar)
         result_table.extend(autoruns)
     header = SheetHeader()
     header.title = 'Autoruns'
-    header.description = 'List several executables from autorun locations'
+    header.description = 'List several executables from autorun locations (registry runkeys, services, ' \
+                         'scheduled tasks, startup folders)'
     table = ExcelTable()
     table.header = Autorun.table_header
     table.autofilter = True
