@@ -70,12 +70,8 @@ def prepare_lnk() -> None:
             except struct.error:
                 continue
 
-            try:
-                if lnk.db_insert(sqlite_lnk_cur):
-                    count += 1
-            except:
-                print (lnk)
-                raise
+            if lnk.db_insert(sqlite_lnk_cur):
+                count += 1
 
         _logger.info(f'{count} lnk files prepared')
         sqlite_lnk_con.commit()
