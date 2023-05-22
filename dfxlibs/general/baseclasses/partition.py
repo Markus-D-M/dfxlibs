@@ -202,7 +202,7 @@ class PartitionWrapper:
 
 
 class Partition(DefaultClass):
-    def __init__(self, source: 'Image', partition_info: pytsk3.TSK_VS_PART_INFO = None):
+    def __init__(self, source: 'Image', partition_info: pytsk3.TSK_VS_PART_INFO = None, bde_recovery: str = ''):
         self._source = source
         self._vss_volume = None
         self._vss_store_cache: Dict[int, Tuple[pyvshadow.store, pytsk3.FS_Info]] = {}
@@ -244,6 +244,8 @@ class Partition(DefaultClass):
             self._decrypted = PartitionWrapper(source, partition_info)
             if pybde.check_volume_signature_file_object(self):
                 self._decrypted = pybde.volume()
+                if bde_recovery:
+                    self._decrypted.set_recovery_password(bde_recovery)
                 self._decrypted.open_file_object(PartitionWrapper(source, partition_info))
                 self._decrypted.unlock()
                 self._add_info.append('bitlocker')
@@ -251,6 +253,9 @@ class Partition(DefaultClass):
                     self._filesystem = pytsk3.FS_Info(BitlockerVolume(self._decrypted))
                 except OSError:
                     self._filesystem = None
+                except RuntimeError:
+                    self._filesystem = None
+                    self._add_info.append('locked')
             else:
                 try:
                     self._filesystem = pytsk3.FS_Info(source.handle, offset=self.sector_offset * self.sector_size)

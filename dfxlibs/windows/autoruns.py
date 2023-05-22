@@ -376,4 +376,3 @@ class Autorun(DefaultClass):
                         rescan = True
                 except ValueError:
                     pass
-

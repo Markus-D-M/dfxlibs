@@ -88,6 +88,8 @@ arguments.add_argument('-i', '--image', nargs='+', help='forensic image file. Th
                                                         'it will overwrite the parameter in the meta information '
                                                         'folder (so be careful to not mix up different images in one '
                                                         'meta information folder).', group_id='general')
+arguments.add_argument('--bde_recovery', help='Bitlocker recovery key for bitlocker encrypted volumes',
+                       group_id='general')
 arguments.add_argument('--part', help='Specify partition for actions like --prepare_files. It must be named as given '
                                       'in the --list_partitions output. Without --part all partitions in an image will '
                                       'be included.', group_id='general')

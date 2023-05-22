@@ -136,6 +136,12 @@ def meta_folder():
                 environment.env['config'] = loads(f.read())
         except (FileNotFoundError, JSONDecodeError):
             environment.env['config'] = {}
+
+        # store passwords in confix (if needed)
+        if args.bde_recovery:
+            environment.env['config']['bde_recovery'] = args.bde_recovery
+            with open(join(environment.env['meta_folder'], 'config.json'), 'w') as f:
+                f.write(dumps(environment.env['config']))
         yield folder
 
 
@@ -158,7 +164,11 @@ def main():
             _logger.info('Running ' + ' '.join(sys.argv))
             _logger.info(f'dfxlibs version: {dfxlibs.__version__}')
             if image_files := get_image_files():
-                environment.env['image'] = dfxlibs.general.image.Image(image_files)
+                try:
+                    bde_recovery = environment.env['config']['bde_recovery']
+                except KeyError:
+                    bde_recovery = ''
+                environment.env['image'] = dfxlibs.general.image.Image(image_files, bde_recovery=bde_recovery)
                 _logger.info(f'using image: {image_files}')
 
             try:

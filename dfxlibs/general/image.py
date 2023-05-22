@@ -39,7 +39,7 @@ class Image:
 
     VS_TYPES = {0x00: 'autodetect', 0x01: 'MBR', 0x02: 'BSD', 0x08: 'Mac', 0x10: 'GPT', 0xffff: 'unsupported'}
 
-    def __init__(self, filenames: Union[str, List[str]]):
+    def __init__(self, filenames: Union[str, List[str]], bde_recovery: str = ''):
         # convert input parameter to list if necessary
         if type(filenames) is str:
             filenames = [filenames]
@@ -63,6 +63,7 @@ class Image:
         self.filenames: List[str] = filenames
         self.size = self._img_info.get_size()
         self._vol_info = None
+        self._bde_recovery = bde_recovery
         self.sector_size = 512  # Set to 512 as default value. Will be updated with new information if available
         try:
             self._vol_info = pytsk3.Volume_Info(self._img_info)
@@ -91,7 +92,7 @@ class Image:
         if self._vol_info:
             result = []
             for p in self._vol_info:
-                partition = Partition(self, p)
+                partition = Partition(self, p, bde_recovery=self._bde_recovery)
                 if not partition.flags & part_flag:
                     continue
                 if part_name is not None and partition.part_name != part_name:

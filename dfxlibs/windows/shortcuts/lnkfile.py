@@ -198,7 +198,7 @@ class LnkFile(DatabaseObject, DefaultClass):
                     lnk_dict['extra']['DISTRIBUTED_LINK_TRACKER_BLOCK']['birth_droid_file_identifier']
                 self.tracker_birth_mac = ':'.join(re.findall('..', self.tracker_birth_file_id[-12:]))
                 self.tracker_birth_time = fileid_to_dt(self.tracker_birth_file_id)
-            except (KeyError, ValueError):
+            except (KeyError, ValueError, OSError):
                 pass
 
     @property
