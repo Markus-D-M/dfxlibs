@@ -22,6 +22,7 @@ from os.path import isfile
 import pytsk3
 from dfxlibs.general.imageformats.ewf import Ewf
 from dfxlibs.general.imageformats.qcow import QCow
+from dfxlibs.general.imageformats.vmdk import Vmdk
 from dfxlibs.general.baseclasses.partition import Partition
 from dfxlibs.general.helpers import bytes_to_hr
 
@@ -57,6 +58,8 @@ class Image:
             self._img_info = Ewf(filenames)
         elif first8bytes[:4] == QCow.magic:
             self._img_info = QCow(filenames)
+        elif first8bytes[:4] == Vmdk.magic:
+            self._img_info = Vmdk(filenames)
         else:
             self._img_info = pytsk3.Img_Info(filenames[0])
             # raise IOError('Unknown file format')
