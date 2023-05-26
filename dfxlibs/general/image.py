@@ -16,13 +16,14 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-
+import os
 from typing import List, Union
 from os.path import isfile
 import pytsk3
 from dfxlibs.general.imageformats.ewf import Ewf
 from dfxlibs.general.imageformats.qcow import QCow
 from dfxlibs.general.imageformats.vmdk import Vmdk
+from dfxlibs.general.imageformats.vhdi import Vhdi
 from dfxlibs.general.baseclasses.partition import Partition
 from dfxlibs.general.helpers import bytes_to_hr
 
@@ -54,12 +55,16 @@ class Image:
         # determine input file format
         with open(filenames[0], 'rb') as fh:
             first8bytes = fh.read(8)
+            fh.seek(-512, os.SEEK_END)
+            last512bytes = fh.read(512)
         if first8bytes == Ewf.magic:
             self._img_info = Ewf(filenames)
-        elif first8bytes[:4] == QCow.magic:
+        elif first8bytes[:len(QCow.magic)] == QCow.magic:
             self._img_info = QCow(filenames)
-        elif first8bytes[:4] == Vmdk.magic:
+        elif first8bytes[:len(Vmdk.magic)] == Vmdk.magic:
             self._img_info = Vmdk(filenames)
+        elif last512bytes[:len(Vhdi.magic)] == Vhdi.magic:
+            self._img_info = Vhdi(filenames)
         else:
             self._img_info = pytsk3.Img_Info(filenames[0])
             # raise IOError('Unknown file format')

@@ -19,6 +19,7 @@ setup(
         'libewf-python',
         'libqcow-python',
         'libvmdk-python',
+        'libvhdi-python',
         'pytsk3',
         'python-registry',
         'python-evtx',
