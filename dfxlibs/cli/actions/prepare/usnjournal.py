@@ -26,6 +26,7 @@ import time
 import pytsk3
 
 from dfxlibs.general.baseclasses.file import File
+from dfxlibs.general.baseclasses.timeline import Timeline
 from dfxlibs.windows.usnjournal.usnrecordv2 import USNRecordV2
 from dfxlibs.general.helpers.db_filter import db_eq, db_and
 from dfxlibs.cli.arguments import register_argument
@@ -68,6 +69,7 @@ def prepare_usnjournal() -> None:
             raise IOError('ERROR: No file database. Use --prepare_files first')
 
         sqlite_usn_con, sqlite_usn_cur = USNRecordV2.db_open(meta_folder, partition.part_name)
+        sqlite_timeline_con, sqlite_timeline_cur = Timeline.db_open(meta_folder, partition.part_name)
 
         journal: File = File.db_select_one(sqlite_files_cur,
                                            db_and(db_eq('name', '$UsnJrnl:$J'), db_eq('parent_folder', '/$Extend')))
@@ -94,6 +96,8 @@ def prepare_usnjournal() -> None:
             journal.seek(offset - chunksize)
         else:
             journal.seek(0)
+        renames_old = dict()
+        states_old = dict()
         while True:
             data = journal.read(65536).lstrip(b'\0')
             if data:
@@ -160,6 +164,37 @@ def prepare_usnjournal() -> None:
                 usnrecord.retrieve_parent_folder(parent_folders, sqlite_files_cur)
                 if usnrecord.db_insert(sqlite_usn_cur):
                     record_count += 1
+                # State tracking for timeline
+                file_meta = f'{usnrecord.file_addr}-{usnrecord.file_seq}'
+                if file_meta not in states_old:
+                    new_states = usnrecord.hr_reason_to_int(usnrecord.reason)
+                else:
+                    new_states = ~states_old[file_meta] & usnrecord.hr_reason_to_int(usnrecord.reason)
+                states_old[file_meta] = usnrecord.hr_reason_to_int(usnrecord.reason)
+                if new_states & usnrecord.USN_REASON_FILE_CREATE:
+                    tl = Timeline(timestamp=usnrecord.timestamp, event_source='usnjournal',
+                                  event_type='FILE_CREATE',
+                                  message=f'{usnrecord.full_name} created',
+                                  param1=usnrecord.name, param2=usnrecord.parent_folder)
+                    tl.db_insert(sqlite_timeline_cur)
+                if new_states & usnrecord.USN_REASON_FILE_DELETE:
+                    tl = Timeline(timestamp=usnrecord.timestamp, event_source='usnjournal',
+                                  event_type='FILE_DELETE',
+                                  message=f'{usnrecord.full_name} deleted',
+                                  param1=usnrecord.name, param2=usnrecord.parent_folder)
+                    tl.db_insert(sqlite_timeline_cur)
+                if new_states & usnrecord.USN_REASON_RENAME_OLD_NAME:
+                    renames_old[file_meta] = (usnrecord.name, usnrecord.parent_folder, usnrecord.full_name)
+                if new_states & usnrecord.USN_REASON_RENAME_NEW_NAME and file_meta in renames_old:
+                    tl = Timeline(timestamp=usnrecord.timestamp, event_source='usnjournal',
+                                  event_type='FILE_RENAME',
+                                  message=f'{renames_old[file_meta][2]} renamed to {usnrecord.full_name}',
+                                  param1=usnrecord.name, param2=usnrecord.parent_folder,
+                                  param3=renames_old[file_meta][0], param4=renames_old[file_meta][1])
+                    tl.db_insert(sqlite_timeline_cur)
+                    del renames_old[file_meta]
+                if new_states & usnrecord.USN_REASON_CLOSE:
+                    del states_old[file_meta]
 
             else:
                 read_buffer_offset += 4
@@ -170,6 +205,7 @@ def prepare_usnjournal() -> None:
 
         print(f'\r{" "*60}\r', end='')  # delete progress line
         sqlite_usn_con.commit()
+        sqlite_timeline_con.commit()
         _logger.info(f'{record_count} usn records added for partition {partition.part_name}')
 
     _logger.info('preparing usn records finished')

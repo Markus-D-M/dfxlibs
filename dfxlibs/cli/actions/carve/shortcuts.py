@@ -17,6 +17,7 @@
 import logging
 
 from dfxlibs.cli.environment import env
+from dfxlibs.general.baseclasses.timeline import Timeline
 from dfxlibs.windows.shortcuts.lnkfile import lnk_carver, LnkFile
 from dfxlibs.cli.arguments import register_argument
 
@@ -51,12 +52,33 @@ def carve_lnk() -> None:
         _logger.info(f'carving lnk files in partition {partition.part_name}')
 
         sqlite_lnk_con, sqlite_lnk_cur = LnkFile.db_open(meta_folder, partition.part_name)
+        sqlite_timeline_con, sqlite_timeline_cur = Timeline.db_open(meta_folder, partition.part_name)
 
         count = 0
         lnk: LnkFile
         for lnk in partition.carve(lnk_carver):
             if lnk.db_insert(sqlite_lnk_cur):
                 count += 1
+            if lnk.target_local_path:
+                path: str = lnk.target_local_path.replace('\\', '/')
+                try:
+                    folder, file = path.rsplit('/', maxsplit=1)
+                except ValueError:
+                    folder = ''
+                    file = path
+                if folder[1] == ':':
+                    folder = folder[2:]
+                if lnk.target_crtime.timestamp() > 0:
+                    tl = Timeline(timestamp=lnk.target_crtime, event_source='lnkfile',
+                                  event_type='TARGET_CREATE',
+                                  param1=file, param2=folder)
+                    tl.db_insert(sqlite_timeline_cur)
+                if lnk.target_atime.timestamp() > 0:
+                    tl = Timeline(timestamp=lnk.target_atime, event_source='lnkfile',
+                                  event_type='TARGET_ACCESSED',
+                                  param1=file, param2=folder)
+                    tl.db_insert(sqlite_timeline_cur)
 
         _logger.info(f'{count} lnk files carved')
         sqlite_lnk_con.commit()
+        sqlite_timeline_con.commit()

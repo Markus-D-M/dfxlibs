@@ -198,7 +198,7 @@ class USNRecordV2(DatabaseObject, DefaultClass):
         if '\0' in fname:
             raise AttributeError('Invalid filename')
         return cls(timestamp=timestamp, file_addr=file_addr, file_seq=file_seq, par_addr=par_addr, par_seq=par_seq,
-                   usn=usn, reason=cls._reason_to_hr(reason), source_info=cls._source_to_hr(source_info), sec_id=sec_id,
+                   usn=usn, reason=cls.reason_to_hr(reason), source_info=cls._source_to_hr(source_info), sec_id=sec_id,
                    file_attr=hr_file_attribute(file_attr), name=fname)
 
     def retrieve_parent_folder(self, parent_folder_buffer: dict, sqlite_files_cur: 'sqlite3.Cursor'):
@@ -224,6 +224,8 @@ class USNRecordV2(DatabaseObject, DefaultClass):
                 if parent.name == '/' and parent.parent_folder == '':
                     # root directory
                     parent_folder = parent.name
+                elif parent.parent_folder == '/':
+                    parent_folder = parent.parent_folder + parent.name
                 else:
                     parent_folder = parent.parent_folder + '/' + parent.name
                 parent_folder_buffer[parent_addr_seq] = parent_folder
@@ -232,13 +234,30 @@ class USNRecordV2(DatabaseObject, DefaultClass):
             else:
                 parent_folder_buffer[parent_addr_seq] = ''
 
+    @property
+    def full_name(self):
+        if self.parent_folder == '/':
+            return f'/{self.name}'
+        elif self.parent_folder == '':
+            return f'{self.name}'
+        else:
+            return f'{self.parent_folder}/{self.name}'
+
     @classmethod
-    def _reason_to_hr(cls, reason: int):
+    def reason_to_hr(cls, reason: int):
         result = []
         for flag in cls.USN_REASON_DESCRIPTION:
             if flag & reason:
                 result.append(cls.USN_REASON_DESCRIPTION[flag])
         return ' / '.join(result)
+
+    @classmethod
+    def hr_reason_to_int(cls, reason: str) -> int:
+        result = 0
+        for flag in cls.USN_REASON_DESCRIPTION:
+            if cls.USN_REASON_DESCRIPTION[flag] in reason:
+                result = result | flag
+        return result
 
     @classmethod
     def _source_to_hr(cls, source: int):

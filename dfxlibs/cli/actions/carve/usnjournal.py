@@ -17,6 +17,7 @@
 import logging
 
 from dfxlibs.general.baseclasses.file import File
+from dfxlibs.general.baseclasses.timeline import Timeline
 from dfxlibs.windows.usnjournal.usnrecordv2 import USNRecordV2, usn_carver
 from dfxlibs.cli.arguments import register_argument
 from dfxlibs.cli.environment import env
@@ -58,17 +59,52 @@ def carve_usnjournal() -> None:
             sqlite_files_cur = None
 
         sqlite_usn_con, sqlite_usn_cur = USNRecordV2.db_open(meta_folder, partition.part_name)
+        sqlite_timeline_con, sqlite_timeline_cur = Timeline.db_open(meta_folder, partition.part_name)
 
         parent_folders = {}
         count = 0
         usnrecord: USNRecordV2
+        renames_old = dict()
+        states_old = dict()
         for usnrecord in partition.carve(usn_carver):
             if sqlite_files_cur is not None:
                 usnrecord.retrieve_parent_folder(parent_folders, sqlite_files_cur)
             if usnrecord.db_insert(sqlite_usn_cur):
                 count += 1
+            # State tracking for timeline
+            file_meta = f'{usnrecord.file_addr}-{usnrecord.file_seq}'
+            if file_meta not in states_old:
+                new_states = usnrecord.hr_reason_to_int(usnrecord.reason)
+            else:
+                new_states = ~states_old[file_meta] & usnrecord.hr_reason_to_int(usnrecord.reason)
+            states_old[file_meta] = usnrecord.hr_reason_to_int(usnrecord.reason)
+            if new_states & usnrecord.USN_REASON_FILE_CREATE:
+                tl = Timeline(timestamp=usnrecord.timestamp, event_source='usnjournal',
+                              event_type='FILE_CREATE',
+                              message=f'{usnrecord.full_name} created',
+                              param1=usnrecord.name, param2=usnrecord.parent_folder)
+                tl.db_insert(sqlite_timeline_cur)
+            if new_states & usnrecord.USN_REASON_FILE_DELETE:
+                tl = Timeline(timestamp=usnrecord.timestamp, event_source='usnjournal',
+                              event_type='FILE_DELETE',
+                              message=f'{usnrecord.full_name} deleted',
+                              param1=usnrecord.name, param2=usnrecord.parent_folder)
+                tl.db_insert(sqlite_timeline_cur)
+            if new_states & usnrecord.USN_REASON_RENAME_OLD_NAME:
+                renames_old[file_meta] = (usnrecord.name, usnrecord.parent_folder, usnrecord.full_name)
+            if new_states & usnrecord.USN_REASON_RENAME_NEW_NAME and file_meta in renames_old:
+                tl = Timeline(timestamp=usnrecord.timestamp, event_source='usnjournal',
+                              event_type='FILE_RENAME',
+                              message=f'{renames_old[file_meta][2]} renamed to {usnrecord.full_name}',
+                              param1=usnrecord.name, param2=usnrecord.parent_folder,
+                              param3=renames_old[file_meta][0], param4=renames_old[file_meta][1])
+                tl.db_insert(sqlite_timeline_cur)
+                del renames_old[file_meta]
+            if new_states & usnrecord.USN_REASON_CLOSE:
+                del states_old[file_meta]
 
         sqlite_usn_con.commit()
+        sqlite_timeline_con.commit()
         _logger.info(f'{count} usn records added for partition {partition.part_name}')
 
     _logger.info('carving usn records finished')

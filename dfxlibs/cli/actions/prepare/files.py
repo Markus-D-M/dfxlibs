@@ -27,6 +27,7 @@ import pytsk3
 
 from dfxlibs.general.helpers.db_filter import db_eq, db_lt, db_ge, db_and, db_gt
 from dfxlibs.general.baseclasses.file import File
+from dfxlibs.general.baseclasses.timeline import Timeline
 from dfxlibs.cli.arguments import register_argument
 from dfxlibs.cli.environment import env
 
@@ -34,7 +35,8 @@ from dfxlibs.cli.environment import env
 _logger = logging.getLogger(__name__)
 
 
-def scan_dir(to_scan: List[Tuple[File, List[str]]], sqlite_cur: sqlite3.Cursor) -> Tuple[int, int]:
+def scan_dir(to_scan: List[Tuple[File, List[str]]], sqlite_file_cur: sqlite3.Cursor,
+             sqlite_timeline_cur: sqlite3.Cursor) -> Tuple[int, int]:
     count_insert = 0
     count_skip = 0
     last_time = time.time()  # for showing progress
@@ -50,12 +52,22 @@ def scan_dir(to_scan: List[Tuple[File, List[str]]], sqlite_cur: sqlite3.Cursor) 
                       f'(inserted: {count_insert} / skipped: {count_skip})...', end='')
                 last_time = time.time()
             entry.parent_folder = '/' + '/'.join([*parents])
-            if entry.db_insert(sqlite_cur):
+            if entry.db_insert(sqlite_file_cur):
                 count_insert += 1
             else:
                 count_skip += 1
+
+            # Timeline
+            timestamp = entry.crtime
+            if entry.fn_crtime.timestamp() > 0 and entry.fn_crtime != entry.crtime:
+                timestamp = entry.fn_crtime
+            if timestamp.timestamp() > 0:
+                timeline = Timeline(timestamp=timestamp, event_source='filesystem', event_type='FILE_CREATE',
+                                    message=f'{entry.full_name} created', param1=entry.name, param2=entry.parent_folder)
+                timeline.db_insert(sqlite_timeline_cur)
+
             for ads in entry.ntfs_ads:
-                if ads.db_insert(sqlite_cur):
+                if ads.db_insert(sqlite_file_cur):
                     count_insert += 1
                 else:
                     count_skip += 1
@@ -95,19 +107,21 @@ def prepare_files() -> None:
         _logger.info(f'prepare partition {partition.part_name}')
 
         # prepare database
-        sqlite_con, sqlite_cur = File.db_open(meta_folder, partition.part_name)
+        sqlite_file_con, sqlite_file_cur = File.db_open(meta_folder, partition.part_name)
+        sqlite_timeline_con, sqlite_timeline_cur = Timeline.db_open(meta_folder, partition.part_name)
 
         # starting with /
         root = partition.get_file('/')
         root.name = '/'
-        root.db_insert(sqlite_cur)
+        root.db_insert(sqlite_file_cur)
 
         to_scan: List[Tuple[File, List[str]]] = [(root, [])]  # dir_entry, parents
-        count_insert, count_skip = scan_dir(to_scan, sqlite_cur)
+        count_insert, count_skip = scan_dir(to_scan, sqlite_file_cur, sqlite_timeline_cur)
 
         # finish
         print(f'\r{" "*60}\r', end='')  # delete progress line
-        sqlite_con.commit()
+        sqlite_file_con.commit()
+        sqlite_timeline_con.commit()
         _logger.info(f'{count_insert} entries inserted; {count_skip} entries skipped')
         _logger.info(f'partition {partition.part_name} finished')
 
@@ -139,7 +153,9 @@ def prepare_vss_files() -> None:
     for partition in image.partitions(part_name=part, filesystem_typeid=pytsk3.TSK_FS_TYPE_NTFS):
         _logger.info(f'scan partition {partition.part_name}')
         # prepare database
-        sqlite_con, sqlite_cur = File.db_open(meta_folder, partition.part_name)
+        sqlite_file_con, sqlite_file_cur = File.db_open(meta_folder, partition.part_name)
+        sqlite_timeline_con, sqlite_timeline_cur = Timeline.db_open(meta_folder, partition.part_name)
+
         count_insert = 0
         count_skip = 0
         for vss_store_id, vss_store, filesystem in partition.get_volume_shadow_copy_filesystems():
@@ -148,16 +164,17 @@ def prepare_vss_files() -> None:
             root = File(filesystem.open('/'), partition)
             root.name = '/'
             root.source = f'vss#{vss_store_id}'
-            root.db_insert(sqlite_cur)
+            root.db_insert(sqlite_file_cur)
 
             to_scan: List[Tuple[File, List[str]]] = [(root, [])]  # dir_entry, parents
-            ci, cs = scan_dir(to_scan, sqlite_cur)
+            ci, cs = scan_dir(to_scan, sqlite_file_cur, sqlite_timeline_cur)
             count_insert += ci
             count_skip += cs
 
             # finish
             print(f'\r{" "*60}\r', end='')  # delete progress line
-            sqlite_con.commit()
+            sqlite_file_con.commit()
+            sqlite_timeline_con.commit()
 
         _logger.info(f'{count_insert} entries inserted; {count_skip} entries skipped')
         _logger.info(f'partition {partition.part_name} finished')

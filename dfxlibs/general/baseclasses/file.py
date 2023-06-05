@@ -79,7 +79,7 @@ class File(DatabaseObject, DefaultClass):
                 self.meta_seq = tsk3_file.info.name.meta_seq
                 self.par_addr = tsk3_file.info.name.par_addr
                 self.par_seq = tsk3_file.info.name.par_seq
-                self.name = self._tsk3_file.info.name.name.decode('utf8')
+                self.name = self._tsk3_file.info.name.name.decode('utf8', errors='backslashreplace')
                 if '.' in self.name:
                     _, self.extension = self.name.rsplit('.', maxsplit=1)
                     self.extension = self.extension.lower()
@@ -277,7 +277,7 @@ class File(DatabaseObject, DefaultClass):
     @staticmethod
     def db_index():
         return ['meta_addr', 'meta_seq', 'par_addr', 'par_seq', 'name', 'parent_folder', 'md5', 'sha1',
-                'sha256', 'tlsh', 'atime', 'ctime', 'crtime', 'mtime', 'extension']
+                'sha256', 'tlsh', 'atime', 'ctime', 'crtime', 'mtime', 'extension', 'file_type']
 
     @staticmethod
     def db_primary_key() -> List[str]:

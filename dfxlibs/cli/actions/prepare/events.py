@@ -24,11 +24,13 @@ from typing import List
 
 from dfxlibs.general.image import Image
 from dfxlibs.general.baseclasses.file import File
+from dfxlibs.general.baseclasses.timeline import Timeline
 from dfxlibs.windows.events.evtxfile import EvtxFile
 from dfxlibs.windows.events.event import Event
 from dfxlibs.general.helpers.db_filter import db_eq, db_or, db_and, db_in, db_gt
 from dfxlibs.cli.arguments import register_argument
 from dfxlibs.cli.environment import env
+
 
 
 _logger = logging.getLogger(__name__)
@@ -66,6 +68,7 @@ def prepare_evtx() -> None:
             raise IOError('ERROR: No file database. Use --prepare_files first')
 
         sqlite_events_con, sqlite_events_cur = Event.db_open(meta_folder, partition.part_name)
+        sqlite_timeline_con, sqlite_timeline_cur = Timeline.db_open(meta_folder, partition.part_name)
 
         record_count = 0
         file_count = 0
@@ -88,10 +91,15 @@ def prepare_evtx() -> None:
                         file_record_count += 1
                     else:
                         file_skip_count += 1
+                    tl = Timeline(timestamp=event.timestamp, event_source='eventlog',
+                                  event_type='EVENT',
+                                  param1=event.channel, param2=str(event.event_id), param3=event.data)
+                    tl.db_insert(sqlite_timeline_cur)
             except OSError:
                 _logger.error(f'error while reading file {file.source}:{file.name} - skipping')
             _logger.info(f'{file_record_count} event records added ({file_skip_count} skipped)')
         sqlite_events_con.commit()
+        sqlite_timeline_con.commit()
         _logger.info(f'{record_count} event records from {file_count} files added for '
                      f'partition {partition.part_name}')
 

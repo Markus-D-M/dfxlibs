@@ -234,20 +234,25 @@ class DatabaseObject:
         return sqlite_con, *cursors
 
     @classmethod
-    def _db_select(cls, db_cur: sqlite3.Cursor, db_filter: Tuple[str, Tuple] = None, force_index_column = None):
+    def _db_select(cls, db_cur: sqlite3.Cursor, db_filter: Tuple[str, Tuple] = None, force_index_column=None,
+                   order_by=None):
         query = f'SELECT * FROM {cls.__name__}'
         if force_index_column:
             if force_index_column not in cls.db_index():
                 raise AttributeError('Attribute not indexed')
             query = f'{query} INDEXED BY {cls.__name__}_{force_index_column}'
-        if db_filter is None:
-            db_cur.execute(query)
+        if order_by is not None:
+            order_suffix = f' ORDER BY {order_by}'
         else:
-            db_cur.execute(f'{query} WHERE {db_filter[0]}', db_filter[1])
+            order_suffix = ''
+        if db_filter is None:
+            db_cur.execute(query + order_suffix)
+        else:
+            db_cur.execute(f'{query} WHERE {db_filter[0]}' + order_suffix, db_filter[1])
 
     @classmethod
     def db_select(cls, db_cur: sqlite3.Cursor, db_filter: Tuple[str, Tuple] = None,
-                  force_index_column: str = None) -> Generator:
+                  force_index_column: str = None, order_by: str = None) -> Generator:
         """
         Select objects from database and returns a generator to iterate over
 
@@ -257,10 +262,12 @@ class DatabaseObject:
         :type db_filter: Tuple[str, Tuple]
         :param force_index_column: Force to use the given column as index - otherwise let sqlite choose the index
         :type force_index_column: str
+        :param order_by: column for ordering results
+        :type order_by: str
         :return: returns items from database to iterate over
         :raise AttributeError: if force_index_column is not indexed
         """
-        cls._db_select(db_cur, db_filter, force_index_column)
+        cls._db_select(db_cur, db_filter, force_index_column, order_by)
         while (item := db_cur.fetchone()) is not None:
             yield item
 

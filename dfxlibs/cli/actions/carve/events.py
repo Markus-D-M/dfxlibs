@@ -17,6 +17,7 @@
 import logging
 
 from dfxlibs.windows.events.evtxfile import evtx_carver
+from dfxlibs.general.baseclasses.timeline import Timeline
 from dfxlibs.windows.events.event import Event
 from dfxlibs.cli.arguments import register_argument
 from dfxlibs.cli.environment import env
@@ -50,12 +51,17 @@ def carve_evtx() -> None:
         _logger.info(f'carving events in partition {partition.part_name}')
 
         sqlite_events_con, sqlite_events_cur = Event.db_open(meta_folder, partition.part_name)
+        sqlite_timeline_con, sqlite_timeline_cur = Timeline.db_open(meta_folder, partition.part_name)
         record_count = 0
         event: Event
         for event in partition.carve(evtx_carver):
             if event.db_insert(sqlite_events_cur):
                 record_count += 1
-
+            tl = Timeline(timestamp=event.timestamp, event_source='eventlog',
+                          event_type='EVENT',
+                          param1=event.channel, param2=str(event.event_id), param3=event.data)
+            tl.db_insert(sqlite_timeline_cur)
         sqlite_events_con.commit()
+        sqlite_timeline_con.commit()
         _logger.info(f'{record_count} event records carved for '
                      f'partition {partition.part_name}')

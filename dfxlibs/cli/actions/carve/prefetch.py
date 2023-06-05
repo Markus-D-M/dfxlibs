@@ -17,6 +17,7 @@
 import logging
 
 from dfxlibs.cli.environment import env
+from dfxlibs.general.baseclasses.timeline import Timeline
 from dfxlibs.windows.prefetch.prefetchfile import PrefetchFile, prefetch_carver
 from dfxlibs.windows.prefetch.executes import Executes
 from dfxlibs.cli.arguments import register_argument
@@ -53,6 +54,7 @@ def carve_prefetch() -> None:
 
         sqlite_pf_con, sqlite_pf_cur = PrefetchFile.db_open(meta_folder, partition.part_name)
         sqlite_execute_con, sqlite_execute_cur = Executes.db_open(meta_folder, partition.part_name)
+        sqlite_timeline_con, sqlite_timeline_cur = Timeline.db_open(meta_folder, partition.part_name)
 
         count = 0
         pf: PrefetchFile
@@ -61,7 +63,12 @@ def carve_prefetch() -> None:
                 count += 1
             for execute in pf.get_executes():
                 execute.db_insert(sqlite_execute_cur)
+                tl = Timeline(timestamp=execute.run_time, event_source='prefetch', event_type='EXECUTE',
+                              message=f'{execute.executable_filename} executed',
+                              param1=execute.executable_filename, param2=execute.parent_folder)
+                tl.db_insert(sqlite_timeline_cur)
 
         _logger.info(f'{count} prefetch files carved')
         sqlite_pf_con.commit()
         sqlite_execute_con.commit()
+        sqlite_timeline_con.commit()
