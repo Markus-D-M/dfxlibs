@@ -15,10 +15,9 @@
 """
 
 import sqlite3
-from typing import Optional, Union, Dict, Generator, List
+from typing import Optional, Dict, Generator, List
 import struct
 import logging
-from datetime import datetime, timezone
 from Crypto.Hash import SHA256, MD5, HMAC
 from Crypto.Cipher import AES, ARC4, DES
 
@@ -95,7 +94,7 @@ class SECURITY(DefaultClass):
         for nl_record in self.domain_cache.nl_records:
             sid = f'{domain_sid}-{nl_record.rid}'
             if sid not in user_list:
-                user_list[sid] = {}
+                user_list[sid] = {'Source': nl_record.source}
 
             user_list[sid]['User'] = f'{nl_record.domain_name}\\{nl_record.user}'
             if nl_record.upn:
@@ -133,6 +132,7 @@ class SECURITY(DefaultClass):
             _logger.info('no NL$KM secret')
             return
         for cache_entry in cache_entries:
+            source, _ = cache_entry.source.split(':', maxsplit=1)
             if cache_entry.name == "NL$Control":
                 continue
             elif cache_entry.name == 'NL$IterationCount':
@@ -143,7 +143,7 @@ class SECURITY(DefaultClass):
             if cache_raw[:2] == b'\0\0':
                 # empty entry
                 continue
-            nl_record = NLRecord(data=cache_raw, nlkm_secret=nlkm_secret, is_pre_vista=self.is_pre_vista)
+            nl_record = NLRecord(data=cache_raw, nlkm_secret=nlkm_secret, is_pre_vista=self.is_pre_vista, source=source)
             nl_records.append(nl_record)
         self._domain_cache = DomainCache(nl_records, iteration_count=dcc_iteration_count)
 
@@ -267,8 +267,9 @@ class DomainCache(DefaultClass):
 
 
 class NLRecord(DefaultClass):
-    def __init__(self, data: bytes, nlkm_secret: bytes, is_pre_vista: bool):
+    def __init__(self, data: bytes, nlkm_secret: bytes, is_pre_vista: bool, source: str):
         self._is_pre_vista = is_pre_vista
+        self.source = source
         self._len_user, self._len_domain_name, self._len_effective_name, self._len_full_name = \
             struct.unpack_from('<4H', data[0:])
         self._len_logon_script_name, self._len_profile_path, self._len_home_directory, \

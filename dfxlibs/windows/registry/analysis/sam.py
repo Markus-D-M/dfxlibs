@@ -106,13 +106,15 @@ class SAM(DefaultClass):
                                                                           'parent_key', 'HKLM\\SAM\\SAM\\Domains\\'
                                                                                         'Account\\Users\\Names'))
         for sam_name in sam_names:
+            source, _ = sam_name.source.split(':', maxsplit=1)
+
             if ':' not in sam_name.rtype:
                 _logger.warning(f'suspicious rid in SAM/Domains/Account/Users/Names for user {sam_name.name}')
                 continue
             _, rid = sam_name.rtype.rsplit(':', 1)
             user_sid = machine_sid + '-' + rid
             if user_sid not in user_list:
-                user_list[user_sid] = {}
+                user_list[user_sid] = {'Source': source}
             user_list[user_sid]['User'] = sam_name.name
             user_list[user_sid]['Created'] = sam_name.timestamp
             if sam_name.deleted:
@@ -132,8 +134,9 @@ class SAM(DefaultClass):
             int_rid = int(rid, 16)
             bytes_rid = struct.pack('<I', int_rid)
             user_sid = f'{machine_sid}-{int_rid}'
+            source, _ = sam_user.source.split(':', maxsplit=1)
             if user_sid not in user_list:
-                user_list[user_sid] = {}
+                user_list[user_sid] = {'Source': source}
             if sam_user.name == 'UserPasswordHint':
                 # need demo data
                 pass

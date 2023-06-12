@@ -75,5 +75,6 @@ class SOFTWARE(DefaultClass):
                                                                          ))
         for reg_profile in reg_profiles:
             _, sid = reg_profile.parent_key.rsplit('\\', 1)
-            user_list[sid] = {'Profile Path': reg_profile.get_real_value()}
+            source, _ = reg_profile.source.split(':', maxsplit=1)
+            user_list[sid] = {'Profile Path': reg_profile.get_real_value(), 'Source': source}
         return user_list

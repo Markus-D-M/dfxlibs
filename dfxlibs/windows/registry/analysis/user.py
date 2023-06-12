@@ -73,12 +73,13 @@ class USER(DefaultClass):
 
         for reg_mount in reg_mounts:
             parts = reg_mount.parent_key.split('\\')
+            source, _ = reg_mount.source.split(':', maxsplit=1)
             if len(parts) != 4:
                 continue
             sid = parts[1]
             driveletter = parts[3]
             if sid not in user_list:
-                user_list[sid] = dict()
+                user_list[sid] = {'Source': source}
             try:
                 user_list[sid]['Network Mounts'].append(f'{driveletter}: {reg_mount.get_real_value()}')
             except KeyError:

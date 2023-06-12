@@ -22,7 +22,7 @@ import logging
 from dfxlibs.cli.environment import env
 from dfxlibs.windows.registry.registryentry import RegistryEntry
 from dfxlibs.general.baseclasses.file import File
-from dfxlibs.general.helpers.db_filter import db_and, db_like, db_eq
+from dfxlibs.general.helpers.db_filter import db_and, db_like, db_eq, db_ne
 from dfxlibs.cli.arguments import register_argument
 from dfxlibs.windows.registry.registryparser import parse_registry
 
@@ -61,69 +61,76 @@ def prepare_registry() -> None:
         except IOError:
             raise IOError('ERROR: No file database. Use --prepare_files first')
 
-        # System hives
-        hives = [{'filename': 'SYSTEM', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SYSTEM'},
-                 {'filename': 'SOFTWARE', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SOFTWARE'},
-                 {'filename': 'SAM', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SAM'},
-                 {'filename': 'SECURITY', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SECURITY'},
-                 {'filename': 'DRIVERS', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\DRIVERS'},
-                 {'filename': 'DEFAULT', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKU\\.DEFAULT'},
-                 {'filename': 'NTUSER.DAT', 'filepath': r'/Windows/ServiceProfiles/LocalService',
-                  'mountpoint': 'HKU\\S-1-5-19'},
-                 {'filename': 'NTUSER.DAT', 'filepath': r'/Windows/ServiceProfiles/NetworkService',
-                  'mountpoint': 'HKU\\S-1-5-20'},
-                 {'filename': 'Amcache.hve', 'filepath': r'%/appcompat/Programs',
-                  'mountpoint': 'AMCACHE'}
-                 ]
-        for hive in hives:
-            hive_file = File.db_select_one(sqlite_files_cur, db_and(
-                                                                    db_like('name', hive['filename']),
-                                                                    db_like('parent_folder', hive['filepath']),
-                                                                    db_eq('allocated', 1),
-                                                                    db_eq('source', 'filesystem')
-                                                                   )
-                                           )
-            if not hive_file:
-                # hive not found (perhaps no windows system partition)
-                continue
-            hive_file.open(partition)
-            hive_buf = hive_file.read()
+        # Registry from filesystem first, then from vss (if exists)
+        source_rounds = [db_eq('source', 'filesystem'), db_ne('source', 'filesystem')]
 
-            for reg_entry in parse_registry(hive_buf, hive['mountpoint']):
-                reg_entry.db_insert(sqlite_registry_rw)
-
-            sqlite_registry_con.commit()
-
-        for user_profile in RegistryEntry.db_select(sqlite_registry_ro, db_and(
-                db_like('parent_key', 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\S-1-5-21%'),
-                db_eq('name', 'ProfileImagePath')
-                )):
-            _, sid = user_profile.parent_key.rsplit('\\', 1)
-            _, folder = user_profile.get_real_value().split('\\', 1)
-            profile_folder = '/' + folder.replace('\\', '/')
-            _logger.info(f'prepare user registry for user {sid}')
-            hives = [
-                {'filename': 'NTUSER.DAT', 'filepath': profile_folder,
-                 'mountpoint': f'HKU\\{sid}'},
-                {'filename': 'UsrClass.dat', 'filepath': f'{profile_folder}/AppData/Local/Microsoft/Windows',
-                 'mountpoint': f'HKU\\{sid}_Classes'}]
+        for source_round in source_rounds:
+            # System hives
+            hives = [{'filename': 'SYSTEM', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SYSTEM'},
+                     {'filename': 'SOFTWARE', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SOFTWARE'},
+                     {'filename': 'SAM', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SAM'},
+                     {'filename': 'SECURITY', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\SECURITY'},
+                     {'filename': 'DRIVERS', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKLM\\DRIVERS'},
+                     {'filename': 'DEFAULT', 'filepath': r'/Windows/System32/config', 'mountpoint': 'HKU\\.DEFAULT'},
+                     {'filename': 'NTUSER.DAT', 'filepath': r'/Windows/ServiceProfiles/LocalService',
+                      'mountpoint': 'HKU\\S-1-5-19'},
+                     {'filename': 'NTUSER.DAT', 'filepath': r'/Windows/ServiceProfiles/NetworkService',
+                      'mountpoint': 'HKU\\S-1-5-20'},
+                     {'filename': 'Amcache.hve', 'filepath': r'%/appcompat/Programs',
+                      'mountpoint': 'AMCACHE'}
+                     ]
             for hive in hives:
                 hive_file = File.db_select_one(sqlite_files_cur, db_and(
-                        db_like('name', hive['filename']),
-                        db_like('parent_folder', hive['filepath']),
-                        db_eq('allocated', 1),
-                        db_eq('source', 'filesystem')
-                    ))
+                                                                        db_like('name', hive['filename']),
+                                                                        db_like('parent_folder', hive['filepath']),
+                                                                        db_eq('allocated', 1),
+                                                                        source_round
+                                                                       )
+                                               )
                 if not hive_file:
-                    _logger.warning(f'profile hive {hive["filename"]} in profile {profile_folder} not found')
+                    # hive not found (perhaps no windows system partition)
                     continue
-
                 hive_file.open(partition)
                 hive_buf = hive_file.read()
 
                 for reg_entry in parse_registry(hive_buf, hive['mountpoint']):
+                    reg_entry.source = f'{hive_file.source}:{hive["filepath"]}/{hive["filename"]}'
                     reg_entry.db_insert(sqlite_registry_rw)
 
                 sqlite_registry_con.commit()
+
+            for user_profile in RegistryEntry.db_select(sqlite_registry_ro, db_and(
+                    db_like('parent_key',
+                            'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\S-1-5-21%'),
+                    db_eq('name', 'ProfileImagePath')
+                    )):
+                _, sid = user_profile.parent_key.rsplit('\\', 1)
+                _, folder = user_profile.get_real_value().split('\\', 1)
+                profile_folder = '/' + folder.replace('\\', '/')
+                _logger.info(f'prepare user registry for user {sid}')
+                hives = [
+                    {'filename': 'NTUSER.DAT', 'filepath': profile_folder,
+                     'mountpoint': f'HKU\\{sid}'},
+                    {'filename': 'UsrClass.dat', 'filepath': f'{profile_folder}/AppData/Local/Microsoft/Windows',
+                     'mountpoint': f'HKU\\{sid}_Classes'}]
+                for hive in hives:
+                    hive_file = File.db_select_one(sqlite_files_cur, db_and(
+                            db_like('name', hive['filename']),
+                            db_like('parent_folder', hive['filepath']),
+                            db_eq('allocated', 1),
+                            source_round
+                        ))
+                    if not hive_file:
+                        _logger.warning(f'profile hive {hive["filename"]} in profile {profile_folder} not found')
+                        continue
+
+                    hive_file.open(partition)
+                    hive_buf = hive_file.read()
+
+                    for reg_entry in parse_registry(hive_buf, hive['mountpoint']):
+                        reg_entry.source = f'{hive_file.source}:{hive["filepath"]}/{hive["filename"]}'
+                        reg_entry.db_insert(sqlite_registry_rw)
+
+                    sqlite_registry_con.commit()
 
     _logger.info('preparing registry finished')
