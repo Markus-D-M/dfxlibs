@@ -81,7 +81,7 @@ def prepare_lnk() -> None:
                 except ValueError:
                     folder = ''
                     file = path
-                if folder[1] == ':':
+                if len(folder) > 1 and folder[1] == ':':
                     folder = folder[2:]
                 if lnk.target_crtime.timestamp() > 0:
                     tl = Timeline(timestamp=lnk.target_crtime, event_source='lnkfile',
