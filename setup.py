@@ -35,6 +35,7 @@ setup(
         "pycryptodome",
         "signify",
         "xmltodict",
-        "lnkparse3"
+        "lnkparse3",
+        "python-dateutil"
     ]
 )
